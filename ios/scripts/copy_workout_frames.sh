@@ -14,7 +14,10 @@
 #
 # Xcode provides SRCROOT, TARGET_BUILD_DIR and UNLOCALIZED_RESOURCES_FOLDER_PATH. The
 # phase declares $(SRCROOT)/../shared/workout-vectors as its input directory and the
-# bundle folder below as its output so it runs under ENABLE_USER_SCRIPT_SANDBOXING.
+# bundle folder below as its output. The calorietracker target sets
+# ENABLE_USER_SCRIPT_SANDBOXING = NO: the sandbox only whitelists the declared output
+# path itself, not the ~7,000 files created beneath it, so a sandboxed build denies
+# `cp` with "file-write-create" and ships an empty workout-vectors/ folder.
 set -eu
 
 SOURCE="${WORKOUT_VECTORS_SOURCE:-${SRCROOT}/../shared/workout-vectors}"
