@@ -87,8 +87,11 @@ animation tick.
 - **Android:** every build type bundles the whole corpus by default. To iterate faster
   locally, debug and debug2 builds accept `-PworkoutVectors=sample` (the 12 exercises /
   96 frames listed in [`sample-pack.txt`](sample-pack.txt), ~15 MB) or
-  `-PworkoutVectors=none` (manifest only). Release builds refuse both overrides. When
-  frames are not bundled, the debug build can fall back to downloads from a local server:
+  `-PworkoutVectors=none` (manifest only). Release packaging (`assembleRelease` /
+  `bundleRelease`) refuses both overrides; tasks that package nothing (unit tests, lint)
+  accept them, which is how the Quality checks workflow runs `:app:testDebugUnitTest
+  :app:lintRelease -PworkoutVectors=none` without touching the corpus. When frames are
+  not bundled, the debug build can fall back to downloads from a local server:
 
   ```sh
   python3 -m http.server -d shared/workout-vectors 8765

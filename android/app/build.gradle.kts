@@ -161,8 +161,11 @@ android {
 //   ./gradlew assembleDebug -PworkoutVectors=sample   (sample-pack.txt only, ~15 MB)
 //   ./gradlew assembleDebug -PworkoutVectors=none     (manifest only)
 //
-// Release builds always bundle the whole corpus and refuse the overrides above so
-// a store binary can never ship with missing frames by accident.
+// Release builds always bundle the whole corpus: assembleRelease/bundleRelease refuse
+// the overrides above so a store binary can never ship with missing frames by
+// accident. Tasks that do not package assets (unit tests, lint) may still be run with
+// `-PworkoutVectors=none`; CI (.github/workflows/quality.yml) does exactly that so it
+// never has to copy or fingerprint the 1.2 GB corpus.
 //
 // Frames are copied (never hard-linked or symlinked) into the generated asset
 // directory: the task outputs must not share inodes with shared/workout-vectors, so
@@ -311,10 +314,12 @@ androidComponents {
         val isRelease = variant.buildType == "release"
         val requested = workoutVectorsModeProperty.orNull
         // Gradle configures every variant even for `assembleDebug`, so the release variant
-        // must not throw here when a debug override is present. Release always bundles the
-        // whole corpus and only rejects the override if its own asset task runs.
+        // must not throw here when an override is present. The override shapes the task's
+        // inputs for every variant (so `lintRelease -PworkoutVectors=none` never wires the
+        // 7,000-file corpus into the build at all), but the release task itself still
+        // refuses to *run* with anything but the whole corpus, so `assembleRelease` /
+        // `bundleRelease` can never package a release binary with missing frames.
         val mode = when {
-            isRelease -> "all"
             requested == null -> "all"
             requested in setOf("none", "sample", "all") -> requested
             else -> throw GradleException("Unknown workoutVectors mode '$requested' (none|sample|all)")

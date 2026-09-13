@@ -45,9 +45,13 @@ jobs:
           java-version: '17'
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
+      # -PworkoutVectors=none: tests and lint do not package assets, so skip wiring the
+      # ~7,000-frame / 1.2 GB workout corpus (shared/workout-vectors) into this build.
+      # Real device and store builds (assembleRelease / bundleRelease, local installs)
+      # still bundle the full corpus by default and refuse this override.
       - name: Unit tests and release lint
         working-directory: android
-        run: ./gradlew :app:testDebugUnitTest :app:lintRelease
+        run: ./gradlew :app:testDebugUnitTest :app:lintRelease -PworkoutVectors=none
       - name: Retain test and lint reports
         if: always()
         uses: actions/upload-artifact@v4
