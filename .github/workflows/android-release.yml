@@ -157,7 +157,11 @@ jobs:
 
       - name: Stage marketing screenshots (when screenshot upload gate is on)
         if: steps.gates.outputs.upload_screenshots == 'true'
-        run: python3 scripts/store/stage_screenshots.py
+        env:
+          STORE_UPLOAD_SCREENSHOTS: "true"
+        run: |
+          python3 -m pip install --disable-pip-version-check -r requirements-store.txt
+          python3 scripts/store/stage_screenshots.py
 
       - name: Play listing / screenshots upload (gated)
         if: >-
