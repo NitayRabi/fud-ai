@@ -115,8 +115,6 @@ jobs:
         working-directory: android
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/fudai-release.jks"
-          # Absolute path: the app module's file() resolves relative paths
-          # against android/app/, so a bare filename here would miss.
           cat > keystore.properties <<EOF
           storeFile=$RUNNER_TEMP/fudai-release.jks
           storePassword=$ANDROID_KEYSTORE_PASSWORD
@@ -140,8 +138,6 @@ jobs:
           cp android/app/build/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/dist/fudai-v${VERSION}.aab"
           cp android/app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/dist/fudai-v${VERSION}.apk"
 
-      # Signing runs before the Play upload so a signing failure leaves nothing
-      # half-published: the workflow can simply be re-run for the same tag.
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Sign release artifacts (Sigstore keyless)
@@ -159,25 +155,37 @@ jobs:
             ${{ runner.temp }}/dist/*.aab
             ${{ runner.temp }}/dist/*.apk
 
-      - name: Listing / screenshots upload (gated — fail before Play)
+      - name: Stage marketing screenshots (when screenshot upload gate is on)
+        if: steps.gates.outputs.upload_screenshots == 'true'
+        env:
+          STORE_UPLOAD_SCREENSHOTS: "true"
+        run: |
+          python3 -m pip install --disable-pip-version-check -r requirements-store.txt
+          python3 scripts/store/stage_screenshots.py
+
+      - name: Play listing / screenshots upload (gated)
+        if: >-
+          steps.gates.outputs.upload_listing == 'true' ||
+          steps.gates.outputs.upload_screenshots == 'true'
         env:
           UPLOAD_LISTING: ${{ steps.gates.outputs.upload_listing }}
           UPLOAD_SCREENSHOTS: ${{ steps.gates.outputs.upload_screenshots }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
-          if [ "$UPLOAD_LISTING" = "true" ] || [ "$UPLOAD_SCREENSHOTS" = "true" ]; then
-            echo "error: listing/screenshot auto-upload is scaffolded but not wired to a publisher action yet."
-            echo "Keep STORE_UPLOAD_LISTING / STORE_UPLOAD_SCREENSHOTS false until that step is implemented."
-            echo "Prepared files are under $RUNNER_TEMP/store-meta (and store/metadata/ locally)."
-            exit 1
-          fi
-          echo "listing/screenshot upload skipped (gates off) — setup only"
+          python3 -m pip install --disable-pip-version-check -r requirements-store.txt
+          python3 scripts/store/play_listing.py --metadata-dir "$RUNNER_TEMP/store-meta"
+
+      - name: Play listing / screenshots upload (skipped)
+        if: >-
+          steps.gates.outputs.upload_listing != 'true' &&
+          steps.gates.outputs.upload_screenshots != 'true'
+        run: echo "Play listing/screenshot upload skipped (gates off)"
 
       - name: RevenueCat catalog sync (gated)
         env:
           STORE_SYNC_REVENUECAT: ${{ vars.STORE_SYNC_REVENUECAT }}
         run: python3 scripts/store/sync_revenuecat_catalog.py
 
-      # Default: draft. STORE_PRODUCTION_ROLLOUT=true is required for completed.
       - name: Upload to Play Console (production track, draft/default)
         if: steps.gates.outputs.upload_whats_new != 'true'
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5

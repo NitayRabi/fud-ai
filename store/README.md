@@ -1,23 +1,25 @@
-# Store release automation (setup only)
+# Store release automation
 
-Future-proof GitHub Actions plumbing for App Store + Play Store releases,
-including listing copy, What’s New, screenshots, and the IAP / subscription /
-tip / credit catalog (RevenueCat).
+GitHub Actions plumbing for App Store + Play Store releases, including listing
+copy, What's New, screenshots, and the IAP / subscription / tip / credit catalog
+(RevenueCat).
 
-**Nothing goes live by default.** Live submit / production rollout / catalog sync
-stay off until you flip repository variables and add secrets.
+**Nothing goes live by default.** Repository variables stay off unless you
+explicitly enable them. Tag workflows keep today's safe behavior (Android Play
+**draft** only; iOS GitHub Release notes only; Xcode Cloud still uploads the
+iOS binary).
 
 ## Current vs planned
 
-| Step | iOS today | Android today | This setup |
-|------|-----------|---------------|------------|
+| Step | iOS today | Android today | Automation (gates OFF) |
+|------|-----------|---------------|------------------------|
 | Tag → quality | `v*` → GitHub Release | `android-v*` → AAB draft | unchanged |
-| Binary upload | Xcode Cloud → ASC | GHA → Play **draft** | kept |
-| What’s New | manual paste | manual paste | prepared + wired (Play); ASC gated |
-| Listing / screenshots | manual | manual | metadata layout + gated upload |
-| Submit for review / production | manual | manual Roll out | **gated OFF** |
+| Binary upload | Xcode Cloud → ASC | GHA → Play **draft** | unchanged |
+| What's New | manual paste | optional via `STORE_UPLOAD_WHATS_NEW` on AAB upload | prepared locally every tag |
+| Listing / screenshots | manual | manual | **wired** (`asc_release.py`, `play_listing.py`) |
+| Submit for review / production | manual | manual Roll out | **wired, OFF** (`STORE_SUBMIT_IOS_REVIEW`, `STORE_PRODUCTION_ROLLOUT`) |
 | IAP / subs / tips / credits | ASC + RevenueCat console | not shipped yet | versioned `store/catalog/` + validate CI |
-| RevenueCat sync | manual | n/a | dry-run in CI; enabling `STORE_SYNC_REVENUECAT` fails until write path ships |
+| RevenueCat sync | manual | n/a | dry-run in CI; `STORE_SYNC_REVENUECAT=true` **fails closed** |
 
 ## Safe defaults (do not flip until ready)
 
@@ -25,30 +27,52 @@ Repository **Variables** (Settings → Secrets and variables → Actions → Var
 
 | Variable | Default | When `true` |
 |----------|---------|-------------|
-| `STORE_UPLOAD_WHATS_NEW` | unset / false | Attach What’s New on Play upload (still draft) |
-| `STORE_UPLOAD_LISTING` | unset / false | Upload title/short/full description |
-| `STORE_UPLOAD_SCREENSHOTS` | unset / false | Upload phone screenshots from `store/metadata/` |
+| `STORE_UPLOAD_WHATS_NEW` | unset / false | Attach What's New on Play AAB upload (still draft) |
+| `STORE_UPLOAD_LISTING` | unset / false | Upload title/description (Play + ASC listing + iOS What's New) |
+| `STORE_UPLOAD_SCREENSHOTS` | unset / false | Upload phone / 6.7" screenshots (see below) |
 | `STORE_PRODUCTION_ROLLOUT` | unset / false | Play status `completed` instead of `draft` |
-| `STORE_SUBMIT_IOS_REVIEW` | unset / false | Submit the latest ASC build for review |
-| `STORE_SYNC_REVENUECAT` | unset / false | **Fails the workflow** — write/sync to RevenueCat is not implemented yet |
+| `STORE_SUBMIT_IOS_REVIEW` | unset / false | Submit the editable ASC version for review |
+| `STORE_SYNC_REVENUECAT` | unset / false | **Fails the workflow** — RevenueCat write/sync is not implemented yet |
 
-Until those are explicitly `true`, tag workflows keep today’s safe behavior
-(Android draft only; iOS GitHub notes only; Xcode Cloud unchanged).
+Copy names from [`gates.env.example`](gates.env.example). Leave unset or `false`
+for setup-only runs.
 
-## Secrets still required for live paths
+## Secrets
 
-Already used:
+Already used by release workflows:
 
 - `ANDROID_KEYSTORE_*`, `PLAY_SERVICE_ACCOUNT_JSON`
 
-Needed later for full automation (add when you turn gates on):
+For ASC metadata / submit (when iOS store gates are on):
 
 | Secret | Used for |
 |--------|----------|
-| `APP_STORE_CONNECT_API_KEY_ID` | ASC metadata / submit |
-| `APP_STORE_CONNECT_ISSUER_ID` | ASC metadata / submit |
+| `APP_STORE_CONNECT_API_KEY_ID` | ASC JWT (`asc_release.py`) |
+| `APP_STORE_CONNECT_ISSUER_ID` | ASC JWT |
 | `APP_STORE_CONNECT_API_KEY_P8` | ASC private key (`.p8` body) |
+
+Later for catalog automation:
+
+| Secret | Used for |
+|--------|----------|
 | `REVENUECAT_SECRET_API_KEY` | Catalog sync / product verification |
+
+## Scripts
+
+| Script | Role |
+|--------|------|
+| [`scripts/store/prepare_listing_text.py`](../scripts/store/prepare_listing_text.py) | `APPSTORE.md` / `PLAYSTORE.md` → `store/metadata/` |
+| [`scripts/store/prepare_whats_new.py`](../scripts/store/prepare_whats_new.py) | What's New for Play + iOS |
+| [`scripts/store/stage_screenshots.py`](../scripts/store/stage_screenshots.py) | `web/assets/screenshots/*.png` → `store/metadata/screenshots/` |
+| [`scripts/store/asc_release.py`](../scripts/store/asc_release.py) | ASC listing, 6.7" screenshots, submit for review |
+| [`scripts/store/play_listing.py`](../scripts/store/play_listing.py) | Play listing text + phone screenshots |
+| [`scripts/store/sync_revenuecat_catalog.py`](../scripts/store/sync_revenuecat_catalog.py) | Validate catalog; fail if sync gate on |
+
+When any live iOS or Play listing gate is on, release workflows install
+[`requirements-store.txt`](../requirements-store.txt) (PyJWT, Google API client).
+
+Environment flags consumed by the publisher scripts (set by workflows from repo
+variables): `UPLOAD_LISTING`, `UPLOAD_SCREENSHOTS`, `SUBMIT_IOS_REVIEW`.
 
 ## Canonical catalog
 
@@ -64,31 +88,37 @@ store/metadata/
   play/en-US/          # title, short/full description, whatsnew (generated)
   ios/en-US/           # description, keywords, promotional_text, whats_new
   screenshots/
-    play/phone/        # symlink or copy targets for Play phoneScreenshots
-    ios/6.7/           # ASC 6.7" slot (fill when automating screenshots)
+    play/phone/        # Play phoneScreenshots (staged from web assets)
+    ios/6.7/           # ASC APP_IPHONE_67 slot
 ```
 
-Marketing PNGs today live in `web/assets/screenshots/`. Copy/resize into
-`store/metadata/screenshots/` before enabling `STORE_UPLOAD_SCREENSHOTS`.
+Marketing PNGs live in [`web/assets/screenshots/`](../web/assets/screenshots/).
+Release workflows run `stage_screenshots.py` when `STORE_UPLOAD_SCREENSHOTS`
+is true, copying those PNGs into `store/metadata/screenshots/` until you replace
+them with store-tailored exports.
 
-## How to enable later (when you want it)
+## How to enable later
 
-1. Fill `store/metadata/` + keep `APPSTORE.md` / `PLAYSTORE.md` / `RELEASE_NOTES.md` in sync.
-2. Add ASC + RevenueCat secrets.
-3. Flip only the variables you want (start with `STORE_UPLOAD_WHATS_NEW`).
+1. Keep `APPSTORE.md` / `PLAYSTORE.md` / `RELEASE_NOTES.md` in sync; run the prepare scripts locally if needed.
+2. Confirm ASC + Play secrets are present.
+3. Flip only the variables you want (e.g. start with `STORE_UPLOAD_LISTING`).
 4. Tag as usual (`vX.Y` / `android-vX.Y`). Do **not** set `STORE_PRODUCTION_ROLLOUT` or
-   `STORE_SUBMIT_IOS_REVIEW` until you are ready for a real store submission.
+   `STORE_SUBMIT_IOS_REVIEW` until you intend a real store submission.
 
 ## Dry-run
+
+Local:
 
 ```bash
 python3 scripts/store/validate_catalog.py
 python3 scripts/store/prepare_whats_new.py --platform all --tag android-v6.1 --out /tmp/whatsnew
 python3 scripts/store/prepare_listing_text.py --platform all --out /tmp/listing
+python3 scripts/store/stage_screenshots.py --dry-run
+UPLOAD_LISTING=true python3 scripts/store/asc_release.py --dry-run --metadata-dir store/metadata
+UPLOAD_LISTING=true python3 scripts/store/play_listing.py --dry-run --metadata-dir store/metadata
 STORE_SYNC_REVENUECAT=false python3 scripts/store/sync_revenuecat_catalog.py
 ```
 
-With `STORE_SYNC_REVENUECAT=true`, `sync_revenuecat_catalog.py` exits with an error (no API write path yet).
-
-Or run the **Store automation (dry-run)** workflow from the Actions tab
-(`workflow_dispatch`). It never uploads to the stores.
+The **Store automation (dry-run)** workflow (`workflow_dispatch` or PR paths) validates
+the catalog, prepares metadata, runs `--dry-run` on publisher scripts, and **never**
+calls App Store Connect or Play APIs.

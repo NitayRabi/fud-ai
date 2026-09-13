@@ -15,6 +15,9 @@ on:
       - "PLAYSTORE.md"
       - "docs/HOSTED_AI_REVENUECAT.md"
       - ".github/workflows/store-automation.yml"
+      - ".github/workflows/ios-release.yml"
+      - ".github/workflows/android-release.yml"
+      - "requirements-store.txt"
   pull_request:
     paths:
       - "store/**"
@@ -23,6 +26,9 @@ on:
       - "PLAYSTORE.md"
       - "docs/HOSTED_AI_REVENUECAT.md"
       - ".github/workflows/store-automation.yml"
+      - ".github/workflows/ios-release.yml"
+      - ".github/workflows/android-release.yml"
+      - "requirements-store.txt"
   workflow_dispatch:
 
 permissions:
@@ -55,6 +61,25 @@ jobs:
 
       - name: Prepare listing text (dry-run)
         run: python3 scripts/store/prepare_listing_text.py --platform all --out "$RUNNER_TEMP/listing"
+
+      - name: Prepare repo metadata layout (no store APIs)
+        run: |
+          python3 scripts/store/prepare_listing_text.py --platform all --out store/metadata
+          python3 scripts/store/prepare_whats_new.py --platform all --tag dry-run --out store/metadata
+          if compgen -G "web/assets/screenshots/*.png" > /dev/null; then
+            python3 scripts/store/stage_screenshots.py --dry-run
+          else
+            echo "skip stage_screenshots dry-run (no web/assets/screenshots/*.png in checkout)"
+          fi
+
+      - name: Validate ASC / Play publisher scripts (import + --dry-run, no network)
+        run: |
+          python3 scripts/store/asc_release.py --help
+          python3 scripts/store/play_listing.py --help
+          UPLOAD_LISTING=true SUBMIT_IOS_REVIEW=true \
+            python3 scripts/store/asc_release.py --dry-run --metadata-dir store/metadata
+          UPLOAD_LISTING=true \
+            python3 scripts/store/play_listing.py --dry-run --metadata-dir store/metadata
 
       - name: RevenueCat catalog dry-run
         env:
