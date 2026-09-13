@@ -81,7 +81,15 @@ jobs:
           python3 scripts/store/prepare_whats_new.py --platform ios --tag "$GITHUB_REF_NAME" --out "$RUNNER_TEMP/store-meta"
           python3 scripts/store/prepare_listing_text.py --platform ios --out "$RUNNER_TEMP/store-meta"
 
-      - name: App Store Connect metadata / submit (gated — fail before GitHub Release)
+      - name: Stage marketing screenshots (when screenshot upload gate is on)
+        if: steps.gates.outputs.upload_screenshots == 'true'
+        run: python3 scripts/store/stage_screenshots.py
+
+      - name: App Store Connect metadata / submit (gated)
+        if: >-
+          steps.gates.outputs.submit_ios_review == 'true' ||
+          steps.gates.outputs.upload_listing == 'true' ||
+          steps.gates.outputs.upload_screenshots == 'true'
         env:
           SUBMIT_IOS_REVIEW: ${{ steps.gates.outputs.submit_ios_review }}
           UPLOAD_LISTING: ${{ steps.gates.outputs.upload_listing }}
@@ -90,15 +98,15 @@ jobs:
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
         run: |
-          if [ "$SUBMIT_IOS_REVIEW" = "true" ] || [ "$UPLOAD_LISTING" = "true" ] \
-            || [ "$UPLOAD_SCREENSHOTS" = "true" ]; then
-            echo "error: iOS ASC auto metadata/submit is scaffolded but not wired yet."
-            echo "Keep STORE_SUBMIT_IOS_REVIEW / STORE_UPLOAD_LISTING / STORE_UPLOAD_SCREENSHOTS false until ASC API steps are implemented."
-            echo "Prepared files: $RUNNER_TEMP/store-meta"
-            echo "Required secrets when enabling: APP_STORE_CONNECT_API_KEY_ID, ISSUER_ID, API_KEY_P8"
-            exit 1
-          fi
-          echo "ASC metadata/submit skipped (gates off) — setup only; Xcode Cloud still owns the IPA upload"
+          python3 -m pip install --disable-pip-version-check -r requirements-store.txt
+          python3 scripts/store/asc_release.py --metadata-dir "$RUNNER_TEMP/store-meta"
+
+      - name: App Store Connect metadata / submit (skipped)
+        if: >-
+          steps.gates.outputs.submit_ios_review != 'true' &&
+          steps.gates.outputs.upload_listing != 'true' &&
+          steps.gates.outputs.upload_screenshots != 'true'
+        run: echo "ASC metadata/submit skipped (gates off) — Xcode Cloud still owns the IPA upload"
 
       - name: RevenueCat catalog sync (gated)
         env:
