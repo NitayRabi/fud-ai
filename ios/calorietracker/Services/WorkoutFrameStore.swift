@@ -212,11 +212,11 @@ actor WorkoutFrameStore {
             var request = URLRequest(url: remote)
             request.setValue(frame.format == .svg ? "image/svg+xml" : "image/png", forHTTPHeaderField: "Accept")
             request.timeoutInterval = 30
-            let (data, response) = try await session.data(for: request)
+            let (bytes, response) = try await session.bytes(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 throw FrameError.badResponse
             }
-            guard data.count <= Self.maxFrameBytes else { throw FrameError.tooLarge }
+            let data = try await Self.readBounded(bytes, declaredLength: http.expectedContentLength)
             guard frame.format != .png || Self.looksLikePNG(data) else { throw FrameError.notAnImage }
             guard Self.data(data, matchesDigest: frame.digest) else { throw FrameError.digestMismatch }
 
@@ -242,6 +242,20 @@ actor WorkoutFrameStore {
             Self.logger.notice("workout frame download failed: \(frame.name, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return nil
         }
+    }
+
+    /// Reads at most `maxFrameBytes`, aborting as soon as the stream exceeds the cap so a
+    /// misconfigured or hostile origin can never buffer an unbounded response in memory.
+    /// The declared length is an early rejection only: it may be absent (chunked) or wrong.
+    nonisolated private static func readBounded(_ bytes: URLSession.AsyncBytes, declaredLength: Int64) async throws -> Data {
+        guard declaredLength <= Int64(maxFrameBytes) else { throw FrameError.tooLarge }
+        var data = Data()
+        data.reserveCapacity(declaredLength > 0 ? Int(declaredLength) : 256 * 1_024)
+        for try await byte in bytes {
+            data.append(byte)
+            guard data.count <= maxFrameBytes else { throw FrameError.tooLarge }
+        }
+        return data
     }
 
     private func removeStaleRevisions(of frame: ExerciseAuthoredFrame, keeping keep: String) {
