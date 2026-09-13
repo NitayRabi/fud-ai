@@ -109,6 +109,13 @@ def validate_play_png(path: Path, *, width: int, height: int) -> None:
         )
 
 
+def clear_destination_pngs(*dest_dirs: Path) -> None:
+    for dest_dir in dest_dirs:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        for stale in dest_dir.glob("*.png"):
+            stale.unlink()
+
+
 def validate_asc_png(path: Path, *, width: int, height: int) -> None:
     if (width, height) not in ASC_IPHONE_67_ACCEPTED:
         accepted = ", ".join(f"{w}x{h}" for w, h in ASC_IPHONE_67_ACCEPTED)
@@ -134,6 +141,9 @@ def stage(*, dry_run: bool) -> list[Path]:
             w, h = read_png_size(path)
             validate_play_png(path, width=w, height=h)
             validate_asc_png(path, width=w, height=h)
+
+    if not dry_run:
+        clear_destination_pngs(PLAY_PHONE_DIR, IOS_67_DIR)
 
     copied: list[Path] = []
     for path in pngs:

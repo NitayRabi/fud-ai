@@ -17,6 +17,8 @@ ROOT = Path(__file__).resolve().parents[2]
 ASC_BASE = "https://api.appstoreconnect.apple.com/v1"
 DEFAULT_BUNDLE_ID = "com.apoorvdarshan.calorietracker"
 IPHONE_67_DISPLAY = "APP_IPHONE_67"
+# App Store Connect per screenshot-set limit (6.7" display type).
+APP_SCREENSHOT_SET_MAX = 10
 EDITABLE_VERSION_STATES = {
     "PREPARE_FOR_SUBMISSION",
     "DEVELOPER_REJECTED",
@@ -366,12 +368,34 @@ def upload_screenshots(
         fail(f"no PNG screenshots in {screenshots_dir}")
 
     shot_set = ensure_screenshot_set(client, version_loc_id, IPHONE_67_DISPLAY)
-    old_ids = list_screenshot_ids(client, shot_set["id"])
+    set_id = shot_set["id"]
+    if len(pngs) > APP_SCREENSHOT_SET_MAX:
+        fail(
+            f"too many PNGs ({len(pngs)}) for ASC 6.7\" set "
+            f"(max {APP_SCREENSHOT_SET_MAX})"
+        )
+
+    # Old ASC ids still on the set; pop front when deleting for capacity or final cleanup.
+    pending_old_ids = list_screenshot_ids(client, set_id)
+
+    # Upload replacements one at a time. ASC rejects new reservations when the set is
+    # at capacity, so delete one pending old screenshot before each upload when full.
+    # If a mid-run upload fails, the live set may be mixed (some olds removed, some news
+    # uploaded); fix the error and re-run, or restore screenshots in App Store Connect.
     for path in pngs:
-        upload_screenshot_file(client, shot_set["id"], path)
-    if old_ids:
-        delete_screenshots(client, old_ids)
-        print(f"  removed {len(old_ids)} previous ASC screenshot(s)")
+        current_ids = list_screenshot_ids(client, set_id)
+        if len(current_ids) >= APP_SCREENSHOT_SET_MAX:
+            if not pending_old_ids:
+                fail(
+                    f"ASC screenshot set at capacity ({APP_SCREENSHOT_SET_MAX}) "
+                    f"with no tracked old screenshots left to replace"
+                )
+            delete_screenshots(client, [pending_old_ids.pop(0)])
+        upload_screenshot_file(client, set_id, path)
+
+    if pending_old_ids:
+        delete_screenshots(client, pending_old_ids)
+        print(f"  removed {len(pending_old_ids)} previous ASC screenshot(s)")
 
 
 def submit_for_review(client: AscClient, app_id: str, version_id: str) -> None:
