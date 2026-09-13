@@ -51,10 +51,10 @@ jobs:
         run: python3 scripts/store/validate_catalog.py
 
       - name: Prepare What's New (dry-run)
-        run: python3 scripts/store/prepare_whats_new.py --tag dry-run --out "$RUNNER_TEMP/whatsnew"
+        run: python3 scripts/store/prepare_whats_new.py --platform all --tag dry-run --out "$RUNNER_TEMP/whatsnew"
 
       - name: Prepare listing text (dry-run)
-        run: python3 scripts/store/prepare_listing_text.py --out "$RUNNER_TEMP/listing"
+        run: python3 scripts/store/prepare_listing_text.py --platform all --out "$RUNNER_TEMP/listing"
 
       - name: RevenueCat catalog dry-run
         env:

@@ -4,8 +4,9 @@
 #
 # Future-proof store gates (repo Variables; all default OFF — see store/README.md):
 #   STORE_SUBMIT_IOS_REVIEW   submit ASC build for review (requires ASC API secrets)
-#   STORE_UPLOAD_LISTING / STORE_UPLOAD_SCREENSHOTS / STORE_UPLOAD_WHATS_NEW
-#   STORE_SYNC_REVENUECAT     IAP/subscription catalog probe
+#   STORE_UPLOAD_LISTING / STORE_UPLOAD_SCREENSHOTS
+#   STORE_UPLOAD_WHATS_NEW    Play-only (What's New on Play upload); not an iOS gate
+#   STORE_SYNC_REVENUECAT     IAP/subscription catalog sync (write path not implemented)
 #
 # ASC secrets (add later when enabling gates — not required for GitHub Release):
 #   APP_STORE_CONNECT_API_KEY_ID
@@ -56,10 +57,53 @@ jobs:
           python3 scripts/store/print_gates.py
           python3 scripts/store/validate_catalog.py
 
+      - name: Normalize store gates
+        id: gates
+        env:
+          STORE_SUBMIT_IOS_REVIEW: ${{ vars.STORE_SUBMIT_IOS_REVIEW }}
+          STORE_UPLOAD_LISTING: ${{ vars.STORE_UPLOAD_LISTING }}
+          STORE_UPLOAD_SCREENSHOTS: ${{ vars.STORE_UPLOAD_SCREENSHOTS }}
+        run: |
+          normalize() {
+            case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+              1|true|yes|on) printf '%s' 'true' ;;
+              *) printf '%s' 'false' ;;
+            esac
+          }
+          {
+            echo "submit_ios_review=$(normalize "$STORE_SUBMIT_IOS_REVIEW")"
+            echo "upload_listing=$(normalize "$STORE_UPLOAD_LISTING")"
+            echo "upload_screenshots=$(normalize "$STORE_UPLOAD_SCREENSHOTS")"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Prepare What's New + listing text (local only)
         run: |
-          python3 scripts/store/prepare_whats_new.py --tag "$GITHUB_REF_NAME" --out "$RUNNER_TEMP/store-meta"
-          python3 scripts/store/prepare_listing_text.py --out "$RUNNER_TEMP/store-meta"
+          python3 scripts/store/prepare_whats_new.py --platform ios --tag "$GITHUB_REF_NAME" --out "$RUNNER_TEMP/store-meta"
+          python3 scripts/store/prepare_listing_text.py --platform ios --out "$RUNNER_TEMP/store-meta"
+
+      - name: App Store Connect metadata / submit (gated — fail before GitHub Release)
+        env:
+          SUBMIT_IOS_REVIEW: ${{ steps.gates.outputs.submit_ios_review }}
+          UPLOAD_LISTING: ${{ steps.gates.outputs.upload_listing }}
+          UPLOAD_SCREENSHOTS: ${{ steps.gates.outputs.upload_screenshots }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+        run: |
+          if [ "$SUBMIT_IOS_REVIEW" = "true" ] || [ "$UPLOAD_LISTING" = "true" ] \
+            || [ "$UPLOAD_SCREENSHOTS" = "true" ]; then
+            echo "error: iOS ASC auto metadata/submit is scaffolded but not wired yet."
+            echo "Keep STORE_SUBMIT_IOS_REVIEW / STORE_UPLOAD_LISTING / STORE_UPLOAD_SCREENSHOTS false until ASC API steps are implemented."
+            echo "Prepared files: $RUNNER_TEMP/store-meta"
+            echo "Required secrets when enabling: APP_STORE_CONNECT_API_KEY_ID, ISSUER_ID, API_KEY_P8"
+            exit 1
+          fi
+          echo "ASC metadata/submit skipped (gates off) — setup only; Xcode Cloud still owns the IPA upload"
+
+      - name: RevenueCat catalog sync (gated)
+        env:
+          STORE_SYNC_REVENUECAT: ${{ vars.STORE_SYNC_REVENUECAT }}
+        run: python3 scripts/store/sync_revenuecat_catalog.py
 
       - name: Create GitHub Release
         env:
@@ -70,35 +114,3 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --title "iOS ${VERSION} (build ${BUILD})" \
             --notes-file "$RUNNER_TEMP/release-notes.md" --latest
-
-      - name: App Store Connect metadata / submit (gated — skipped unless enabled)
-        env:
-          STORE_SUBMIT_IOS_REVIEW: ${{ vars.STORE_SUBMIT_IOS_REVIEW }}
-          STORE_UPLOAD_LISTING: ${{ vars.STORE_UPLOAD_LISTING }}
-          STORE_UPLOAD_SCREENSHOTS: ${{ vars.STORE_UPLOAD_SCREENSHOTS }}
-          STORE_UPLOAD_WHATS_NEW: ${{ vars.STORE_UPLOAD_WHATS_NEW }}
-          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
-        run: |
-          on() {
-            case "$(echo "${1:-}" | tr '[:upper:]' '[:lower:]')" in
-              1|true|yes|on) return 0 ;;
-              *) return 1 ;;
-            esac
-          }
-          if on "$STORE_SUBMIT_IOS_REVIEW" || on "$STORE_UPLOAD_LISTING" \
-            || on "$STORE_UPLOAD_SCREENSHOTS" || on "$STORE_UPLOAD_WHATS_NEW"; then
-            echo "error: iOS ASC auto metadata/submit is scaffolded but not wired yet."
-            echo "Keep STORE_SUBMIT_IOS_REVIEW / STORE_UPLOAD_* false until ASC API steps are implemented."
-            echo "Prepared files: $RUNNER_TEMP/store-meta"
-            echo "Required secrets when enabling: APP_STORE_CONNECT_API_KEY_ID, ISSUER_ID, API_KEY_P8"
-            exit 1
-          fi
-          echo "ASC metadata/submit skipped (gates off) — setup only; Xcode Cloud still owns the IPA upload"
-
-      - name: RevenueCat catalog sync (gated dry-run)
-        env:
-          STORE_SYNC_REVENUECAT: ${{ vars.STORE_SYNC_REVENUECAT }}
-          REVENUECAT_SECRET_API_KEY: ${{ secrets.REVENUECAT_SECRET_API_KEY }}
-        run: python3 scripts/store/sync_revenuecat_catalog.py

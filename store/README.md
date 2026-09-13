@@ -17,7 +17,7 @@ stay off until you flip repository variables and add secrets.
 | Listing / screenshots | manual | manual | metadata layout + gated upload |
 | Submit for review / production | manual | manual Roll out | **gated OFF** |
 | IAP / subs / tips / credits | ASC + RevenueCat console | not shipped yet | versioned `store/catalog/` + validate CI |
-| RevenueCat sync | manual | n/a | dry-run unless `STORE_SYNC_REVENUECAT=true` |
+| RevenueCat sync | manual | n/a | dry-run in CI; enabling `STORE_SYNC_REVENUECAT` fails until write path ships |
 
 ## Safe defaults (do not flip until ready)
 
@@ -30,7 +30,7 @@ Repository **Variables** (Settings → Secrets and variables → Actions → Var
 | `STORE_UPLOAD_SCREENSHOTS` | unset / false | Upload phone screenshots from `store/metadata/` |
 | `STORE_PRODUCTION_ROLLOUT` | unset / false | Play status `completed` instead of `draft` |
 | `STORE_SUBMIT_IOS_REVIEW` | unset / false | Submit the latest ASC build for review |
-| `STORE_SYNC_REVENUECAT` | unset / false | Push catalog to RevenueCat (not dry-run) |
+| `STORE_SYNC_REVENUECAT` | unset / false | **Fails the workflow** — write/sync to RevenueCat is not implemented yet |
 
 Until those are explicitly `true`, tag workflows keep today’s safe behavior
 (Android draft only; iOS GitHub notes only; Xcode Cloud unchanged).
@@ -83,9 +83,12 @@ Marketing PNGs today live in `web/assets/screenshots/`. Copy/resize into
 
 ```bash
 python3 scripts/store/validate_catalog.py
-python3 scripts/store/prepare_whats_new.py --tag android-v6.1 --out /tmp/whatsnew
-python3 scripts/store/prepare_listing_text.py --out /tmp/listing
+python3 scripts/store/prepare_whats_new.py --platform all --tag android-v6.1 --out /tmp/whatsnew
+python3 scripts/store/prepare_listing_text.py --platform all --out /tmp/listing
+STORE_SYNC_REVENUECAT=false python3 scripts/store/sync_revenuecat_catalog.py
 ```
+
+With `STORE_SYNC_REVENUECAT=true`, `sync_revenuecat_catalog.py` exits with an error (no API write path yet).
 
 Or run the **Store automation (dry-run)** workflow from the Actions tab
 (`workflow_dispatch`). It never uploads to the stores.

@@ -21,9 +21,13 @@ def extract_fenced_after_heading(text: str, heading_prefix: str) -> str:
     for i, line in enumerate(lines):
         if line.startswith("## ") and heading_prefix in line:
             for j in range(i + 1, len(lines)):
+                if lines[j].startswith("## "):
+                    fail(f"no fenced block before next heading after {heading_prefix!r}")
                 if lines[j].strip().startswith("```"):
                     body: list[str] = []
                     for k in range(j + 1, len(lines)):
+                        if lines[k].startswith("## "):
+                            fail(f"unclosed fence before next heading after {heading_prefix!r}")
                         if lines[k].strip().startswith("```"):
                             return "\n".join(body).strip()
                         body.append(lines[k])
@@ -62,24 +66,30 @@ def main() -> None:
         help="Release tag, e.g. android-v6.1 or v6.1 (used for logging only)",
     )
     parser.add_argument("--out", required=True, type=Path, help="Output directory")
+    parser.add_argument(
+        "--platform",
+        choices=("play", "ios", "all"),
+        default="all",
+        help="Which store docs to parse (default: all)",
+    )
     args = parser.parse_args()
 
-    play = (ROOT / "PLAYSTORE.md").read_text(encoding="utf-8")
-    ios = (ROOT / "APPSTORE.md").read_text(encoding="utf-8")
+    if args.platform in ("play", "all"):
+        play = (ROOT / "PLAYSTORE.md").read_text(encoding="utf-8")
+        play_block = extract_fenced_after_heading(play, "What's New")
+        play_dir = args.out / "play"
+        play_files = write_play_whatsnew(play_block, play_dir)
+        print(f"  play locales: {len(play_files)} → {play_dir}")
 
-    play_block = extract_fenced_after_heading(play, "What's New")
-    ios_block = extract_fenced_after_heading(ios, "What's New")
-
-    play_dir = args.out / "play"
-    ios_dir = args.out / "ios"
-    play_files = write_play_whatsnew(play_block, play_dir)
-    ios_dir.mkdir(parents=True, exist_ok=True)
-    ios_path = ios_dir / "whats_new.txt"
-    ios_path.write_text(ios_block.strip() + "\n", encoding="utf-8")
+    if args.platform in ("ios", "all"):
+        ios = (ROOT / "APPSTORE.md").read_text(encoding="utf-8")
+        ios_block = extract_fenced_after_heading(ios, "What's New")
+        ios_path = args.out / "ios" / "en-US" / "whats_new.txt"
+        ios_path.parent.mkdir(parents=True, exist_ok=True)
+        ios_path.write_text(ios_block.strip() + "\n", encoding="utf-8")
+        print(f"  ios: {ios_path}")
 
     print(f"prepared what's new for {args.tag}")
-    print(f"  play locales: {len(play_files)} → {play_dir}")
-    print(f"  ios: {ios_path}")
 
 
 if __name__ == "__main__":

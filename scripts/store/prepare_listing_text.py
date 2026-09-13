@@ -9,6 +9,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
+PLAY_CAPS = {
+    "title": 30,
+    "short_description": 80,
+    "full_description": 4000,
+}
+IOS_CAPS = {
+    "name": 30,
+    "subtitle": 30,
+    "promotional_text": 170,
+    "keywords": 100,
+    "description": 4000,
+}
+
 
 def fail(msg: str) -> None:
     print(f"error: {msg}", file=sys.stderr)
@@ -34,6 +47,14 @@ def first_fence_after(text: str, heading: str) -> str:
     fail(f"missing heading: {heading}")
 
 
+def write_capped(path: Path, content: str, field: str, cap: int) -> None:
+    text = content.strip()
+    if len(text) > cap:
+        fail(f"{field} is {len(text)} chars (max {cap}): {path.relative_to(ROOT)}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text + "\n", encoding="utf-8")
+
+
 def write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content.strip() + "\n", encoding="utf-8")
@@ -42,32 +63,76 @@ def write(path: Path, content: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=ROOT / "store" / "metadata")
+    parser.add_argument(
+        "--platform",
+        choices=("play", "ios", "all"),
+        default="all",
+        help="Which store docs to parse (default: all)",
+    )
     args = parser.parse_args()
 
-    play = (ROOT / "PLAYSTORE.md").read_text(encoding="utf-8")
-    ios = (ROOT / "APPSTORE.md").read_text(encoding="utf-8")
+    if args.platform in ("play", "all"):
+        play = (ROOT / "PLAYSTORE.md").read_text(encoding="utf-8")
+        write_capped(
+            args.out / "play" / "en-US" / "title.txt",
+            first_fence_after(play, "1. App Name"),
+            "play title",
+            PLAY_CAPS["title"],
+        )
+        write_capped(
+            args.out / "play" / "en-US" / "short_description.txt",
+            first_fence_after(play, "2. Short Description"),
+            "play short_description",
+            PLAY_CAPS["short_description"],
+        )
+        write_capped(
+            args.out / "play" / "en-US" / "full_description.txt",
+            first_fence_after(play, "3. Full Description"),
+            "play full_description",
+            PLAY_CAPS["full_description"],
+        )
 
-    write(args.out / "play" / "en-US" / "title.txt", first_fence_after(play, "1. App Name"))
-    write(
-        args.out / "play" / "en-US" / "short_description.txt",
-        first_fence_after(play, "2. Short Description"),
-    )
-    write(
-        args.out / "play" / "en-US" / "full_description.txt",
-        first_fence_after(play, "3. Full Description"),
-    )
-
-    write(args.out / "ios" / "en-US" / "name.txt", first_fence_after(ios, "App Name"))
-    write(args.out / "ios" / "en-US" / "subtitle.txt", first_fence_after(ios, "Subtitle (30 chars max)"))
-    write(
-        args.out / "ios" / "en-US" / "promotional_text.txt",
-        first_fence_after(ios, "Promotional Text (170 chars max)"),
-    )
-    write(args.out / "ios" / "en-US" / "keywords.txt", first_fence_after(ios, "Keywords (100 chars max)"))
-    write(args.out / "ios" / "en-US" / "description.txt", first_fence_after(ios, "Description"))
-    write(args.out / "ios" / "en-US" / "privacy_url.txt", first_fence_after(ios, "Privacy URL"))
-    write(args.out / "ios" / "en-US" / "support_url.txt", first_fence_after(ios, "Support URL"))
-    write(args.out / "ios" / "en-US" / "marketing_url.txt", first_fence_after(ios, "Marketing URL"))
+    if args.platform in ("ios", "all"):
+        ios = (ROOT / "APPSTORE.md").read_text(encoding="utf-8")
+        write_capped(
+            args.out / "ios" / "en-US" / "name.txt",
+            first_fence_after(ios, "App Name"),
+            "ios name",
+            IOS_CAPS["name"],
+        )
+        write_capped(
+            args.out / "ios" / "en-US" / "subtitle.txt",
+            first_fence_after(ios, "Subtitle (30 chars max)"),
+            "ios subtitle",
+            IOS_CAPS["subtitle"],
+        )
+        write_capped(
+            args.out / "ios" / "en-US" / "promotional_text.txt",
+            first_fence_after(ios, "Promotional Text (170 chars max)"),
+            "ios promotional_text",
+            IOS_CAPS["promotional_text"],
+        )
+        write_capped(
+            args.out / "ios" / "en-US" / "keywords.txt",
+            first_fence_after(ios, "Keywords (100 chars max)"),
+            "ios keywords",
+            IOS_CAPS["keywords"],
+        )
+        write_capped(
+            args.out / "ios" / "en-US" / "description.txt",
+            first_fence_after(ios, "Description"),
+            "ios description",
+            IOS_CAPS["description"],
+        )
+        for heading, filename in (
+            ("Privacy URL", "privacy_url.txt"),
+            ("Support URL", "support_url.txt"),
+            ("Marketing URL", "marketing_url.txt"),
+        ):
+            write(
+                args.out / "ios" / "en-US" / filename,
+                first_fence_after(ios, heading),
+            )
 
     print(f"wrote listing text under {args.out}")
 

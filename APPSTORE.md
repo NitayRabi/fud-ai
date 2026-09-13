@@ -32,9 +32,9 @@ Secondary: Food & Drink
 ```
 Effortless calorie tracking with AI-powered food recognition. Snap, scan, speak, or type a meal — get instant calories, macros, and nutrients.
 
-NEW in v6.1: progressive multi-photo analysis can follow ingredients added to the same plate, analyzed meals include editable ingredient breakdowns, and serving fields now include a quick calculator. You can also import Fud AI diary JSON, configure Home Screen quick actions, inspect exact values on long-range weight charts, and preview exercises before adding them.
+NEW in v6.1: progressive multi-photo analysis follows ingredients on the same plate; meals include editable ingredient breakdowns; serving fields include a quick calculator. Import Fud AI diary JSON, configure Home Screen quick actions, inspect weight charts, and preview exercises.
 
-Nutrition tracking now includes custom goals, caffeine, creatine, beta-alanine, L-citrulline, L-carnitine, L-arginine, taurine, betaine, and HMB. Optional fasting adds persistent timers, editable history, custom goals, local alerts, and explicit AI Coach context. Apple Watch can now log water directly.
+Nutrition tracking includes custom goals, caffeine, creatine, beta-alanine, L-citrulline, L-carnitine, L-arginine, taurine, betaine, and HMB. Optional fasting adds persistent timers, editable history, custom goals, local alerts, and Coach context. Apple Watch can log water directly.
 
 Fud AI is free, open source, privacy-first, and bring-your-own-key. There are no ads; optional tips support development.
 
@@ -63,16 +63,16 @@ PERSONALIZED GOALS
 BMR and TDEE calculators, six activity levels, automatic or editable macros, nutrient goals, meal-time boundaries, and Adaptive Goals.
 
 WIDGETS
-Home Screen Fud AI widgets in Small, Medium, and Large; a small Protein widget; a separate Water widget for Home and Lock Screen; and calorie/macro Lock Screen widgets. Apple Watch and complications show calories and macros, plus compact water progress when enabled.
+Home Screen Fud AI widgets in Small, Medium, and Large; a Protein widget; a Water widget for Home and Lock Screen; and calorie/macro Lock Screen widgets. Apple Watch and complications show calories and macros, plus water when enabled.
 
 OPTIONAL WATER TRACKING
-Off by default. Set your own daily goal, quick-log common glass amounts or a custom amount, view progress under calories, schedule a local reminder, and use the dedicated Water widget. Water history stays on your device and is not written to Apple Health.
+Off by default. Set a daily goal, quick-log glasses or a custom amount, view progress under calories, schedule a reminder, and use the Water widget. Water stays on-device and is not written to Apple Health.
 
 OPTIONAL FASTING TRACKING
-Off by default. Choose a 1–168 hour goal, start/end/cancel from the Home + menu, keep the timer across app restarts, optionally receive a local goal alert, and edit completed sessions. Fasting history stays on your device and is not written to Apple Health.
+Off by default. Choose a 1–168 hour goal, start/end/cancel from Home +, keep the timer across restarts, optional local alerts, and edit completed sessions. Fasting stays on-device and is not written to Apple Health.
 
 PRIVACY
-No conventional account or sign-in, analytics, behavioral tracking, or ads. BYOK keys stay in Keychain. The optional 18+ Weekly Challenge sends a chosen display name, at most one X or Instagram handle, and seven-day aggregate habit scores to Fud AI; it never sends raw food, water, workout, Health, body-weight, or weight-loss records. Apple Intelligence can process eligible descriptions on-device. Barcode sends only its number to Open Food Facts. MIT licensed.
+No account, analytics, behavioral tracking, or ads. BYOK keys stay in Keychain. The optional 18+ Weekly Challenge sends a display name, at most one X or Instagram handle, and seven-day aggregate habit scores—never raw food, water, workout, Health, or weight records. Apple Intelligence can process eligible descriptions on-device. Barcode sends only its number to Open Food Facts. MIT licensed.
 
 APPLE HEALTH
 Optional sync for nutrition, weight, height, body fat, and calculated workout calories. External samples can auto-import or restore after reinstall. Energy Burn Goals can use active/total energy. Fasting is local-only. Permissions remain manageable in Health.
