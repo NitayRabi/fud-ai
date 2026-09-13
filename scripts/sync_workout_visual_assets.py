@@ -2,22 +2,23 @@
 """Validate the v2 workout illustration corpus and regenerate its runtime manifests.
 
 `shared/workout-vectors` is the single canonical copy of the ~7,000 authored PNG
-frames, and both apps package it directly at build time: Android copies the
-manifest + frames into its generated assets and the iOS app target runs the
-"Copy Workout Frames" build phase (`ios/scripts/copy_workout_frames.sh`), so
-frames render offline without a CDN (see `shared/workout-vectors/README.md`).
-This script:
+frames. The frames are *not* packaged into the store binaries: both apps bundle
+only `exercise-visual-manifest.json` and fetch individual frames on demand from
+the workout-vector CDN (see `shared/workout-vectors/README.md`); debug builds may
+additionally bundle the small sample pack. This script:
 
 1. validates the corpus (complete male/female 4-frame sets, 1024x768 RGBA PNGs,
    one set per catalogue exercise),
 2. writes the shared manifest and the byte-identical iOS `ExerciseVisualManifest`
-   data set, including a per-frame content digest used to verify cached or
-   downloaded frames,
+   data set, including a per-frame content digest used for CDN cache busting and
+   on-device download verification,
 3. rejects any generated `*_v2_*.imageset` left in the iOS asset catalog (the
-   corpus ships once, via the build phase, never as a second catalog copy),
+   catalog must never carry the frame corpus again),
 4. checks, by following the Xcode project's object references, that the
    calorietracker app target still runs the "Copy Workout Frames" build phase
-   against `shared/workout-vectors` and does not also copy the raw directory.
+   (`ios/scripts/copy_workout_frames.sh`: Debug sample pack + release guard that
+   fails the build if frames leak into the bundle) and does not reference the
+   raw `shared/workout-vectors` directory as a bundled folder.
 """
 
 from __future__ import annotations
@@ -53,8 +54,8 @@ IOS_MANIFEST = (
 )
 SAMPLE_PACK_LIST = SHARED_DIRECTORY / "sample-pack.txt"
 IOS_PROJECT = REPOSITORY_ROOT / "ios" / "calorietracker.xcodeproj" / "project.pbxproj"
-# The run-script build phase that copies manifest + frames into
-# calorietracker.app/workout-vectors (and nothing else from this directory).
+# The run-script build phase that copies the Debug sample pack into
+# calorietracker.app/workout-vectors and, for Release, refuses to bundle any frame.
 IOS_APP_TARGET_NAME = "calorietracker"
 IOS_APP_PRODUCT_TYPE = "com.apple.product-type.application"
 IOS_COPY_SCRIPT = REPOSITORY_ROOT / "ios" / "scripts" / "copy_workout_frames.sh"
@@ -298,8 +299,8 @@ def enforce_catalog_has_no_frames(*, check: bool) -> int:
     if check:
         raise ValueError(
             f"iOS asset catalog still contains {len(stale)} generated workout frame "
-            "imagesets; the corpus ships via the Copy Workout Frames build phase "
-            "and must not be duplicated in the catalog. Run "
+            "imagesets; frames must not ship in the app binary (they are fetched "
+            "from the CDN). Run "
             "scripts/sync_workout_visual_assets.py (without --check) to remove them."
         )
     for imageset in stale:
@@ -367,8 +368,11 @@ def pbxproj_list(body: str, key: str) -> list[str]:
     return items
 
 
-def enforce_ios_bundles_corpus() -> None:
-    """The calorietracker app target must run the filtered corpus copy build phase.
+def enforce_ios_frame_build_phase() -> None:
+    """The calorietracker app target must run the workout-frame build phase.
+
+    The phase copies only the Debug sample pack and, for Release, fails the build if
+    any `*_v2_*.png` reached the bundle, so it is the iOS release-size guard.
 
     Follows the real object graph — app target → buildPhases → shell-script phase —
     rather than searching the file for strings, so detaching the phase from the target
@@ -410,7 +414,7 @@ def enforce_ios_bundles_corpus() -> None:
         raise ValueError(
             f"{project_name}: the {IOS_APP_TARGET_NAME} target must run exactly one "
             f"build phase invoking {IOS_COPY_SCRIPT_INVOCATION}, found {len(copy_phases)}; "
-            "iOS would ship without offline workout frames"
+            "it is the release guard against bundling the 1.2 GB frame corpus"
         )
     phase = objects[copy_phases[0]]
     inputs = set(pbxproj_list(phase, "inputPaths"))
@@ -437,8 +441,8 @@ def enforce_ios_bundles_corpus() -> None:
         if path.replace("\\", "/").rstrip("/").endswith("shared/workout-vectors"):
             raise ValueError(
                 f"{project_name}: file reference {object_id} points at shared/workout-vectors; "
-                "the corpus ships only through the Copy Workout Frames build phase, never as "
-                "a folder reference"
+                "the corpus must never be bundled (release ships the manifest only and "
+                "downloads frames from the CDN)"
             )
 
 
@@ -494,7 +498,7 @@ def main() -> int:
         }
         sample_ids = validate_sample_pack(sequences)
         removed = enforce_catalog_has_no_frames(check=arguments.check)
-        enforce_ios_bundles_corpus()
+        enforce_ios_frame_build_phase()
         sync_manifest(manifest_document(sequences, digests), check=arguments.check)
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"error: {error}", file=sys.stderr)

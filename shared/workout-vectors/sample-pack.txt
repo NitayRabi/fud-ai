@@ -1,6 +1,7 @@
-# Small subset of exercises for faster Android debug builds
-# (-PworkoutVectors=sample) and local download-path testing. Every build type
-# bundles the complete corpus by default. One catalogue exercise id per line.
+# Exercises whose frames are bundled into DEBUG builds only (Android
+# -PworkoutVectors=sample, iOS "Copy Workout Frames" phase), so the workout
+# animations can be exercised without network access or a provisioned CDN.
+# One catalogue exercise id per line. Release builds never bundle frames.
 Barbell_Full_Squat
 Pushups
 Pullups
