@@ -1,6 +1,6 @@
 # Installed in release workflows only when store upload gates are enabled.
 # Pinned for dependency-review (fail-on-severity: high); Pillow matches workout repair.
-PyJWT[crypto]==2.10.1
+PyJWT[crypto]==2.14.0
 google-api-python-client==2.169.0
 google-auth==2.40.1
 Pillow==12.3.0
