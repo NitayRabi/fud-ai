@@ -183,8 +183,12 @@ class ExerciseVisualResolverTest {
             "shared/workout-vectors must be packaged through the filtered asset task, not as a raw assets.srcDir",
             !script.contains("\"../../shared/workout-vectors\"")
         )
-        assertTrue("release must bundle every frame", script.contains("isRelease -> \"all\""))
-        assertTrue("debug must default to the whole corpus", script.contains("requested == null -> \"all\""))
+        assertTrue("every variant must default to the whole corpus", script.contains("requested == null -> \"all\""))
+        assertTrue(
+            "release packaging must refuse anything but the whole corpus",
+            script.contains("if (release.get() && requested != null && requested != \"all\")") &&
+                script.contains("store binaries must bundle the complete workout frame corpus")
+        )
         assertTrue(
             "release must not depend on a workout-frame CDN",
             script.contains("val workoutVectorsDefaultBaseUrl = \"\"") && !script.contains("assets.fud-ai.app")
