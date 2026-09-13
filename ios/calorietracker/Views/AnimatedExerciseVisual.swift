@@ -164,7 +164,15 @@ private struct ExerciseImageView: View {
                 guard !Task.isCancelled else { return }
                 frameUnavailable = true
             }
-            guard animatesFrames, asset.frames.count > 1, !reduceMotion else { return }
+            guard animatesFrames, asset.frames.count > 1, !reduceMotion else {
+                // Static thumbnails (animation off, Reduce Motion) load once, so a transient
+                // CDN/offline failure would otherwise pin them to the placeholder until
+                // SwiftUI recreates the view. Keep retrying with backoff while visible.
+                if displayedImage == nil {
+                    await retryStaticFrame()
+                }
+                return
+            }
 
             var prefetchedIndex = (frameIndex + 1) % asset.frames.count
             var prefetchedImage = await loadFrame(at: prefetchedIndex)
@@ -177,11 +185,16 @@ private struct ExerciseImageView: View {
                     guard !Task.isCancelled else { return }
                     displayedImage = prefetchedImage
                     frameIndex = prefetchedIndex
+                    frameUnavailable = false
                 } else {
                     frameIndex = (frameIndex + 1) % asset.frames.count
+                    // Each tick is another attempt; WorkoutFrameStore memoizes failures for
+                    // 60 s so an offline animation never hammers the CDN, and the first frame
+                    // that arrives after reconnecting replaces the placeholder.
                     if let loaded = await loadFrame(at: frameIndex) {
                         guard !Task.isCancelled else { return }
                         displayedImage = loaded
+                        frameUnavailable = false
                     }
                 }
 
@@ -227,6 +240,39 @@ private struct ExerciseImageView: View {
         return await Task.detached(priority: .userInitiated) {
             await ExerciseImageCache.shared.image(for: frame, maxPixelSize: maxPixelSize)
         }.value
+    }
+
+    /// Re-attempts the representative frame of a non-animating card until it loads or the
+    /// view goes away. Only authored frames can appear later (a `.file` frame that failed
+    /// once is simply missing), and the store's 60 s failure memoization means early
+    /// attempts mostly pick up a frame another card already downloaded.
+    private func retryStaticFrame() async {
+        guard asset.frames.indices.contains(frameIndex), case .authored = asset.frames[frameIndex] else { return }
+        var attempt = 0
+        while !Task.isCancelled {
+            try? await Task.sleep(for: ExerciseFrameRetryPolicy.delay(attempt: attempt))
+            guard !Task.isCancelled else { return }
+            if let image = await loadFrame(at: frameIndex) {
+                guard !Task.isCancelled else { return }
+                displayedImage = image
+                frameUnavailable = false
+                return
+            }
+            attempt += 1
+        }
+    }
+}
+
+/// Backoff between UI-driven retries of an unavailable authored frame (matches Android's
+/// `frameRetryDelayMillis`): 15 s, 30 s, then 60 s — the store's own failure-retry window —
+/// for as long as the card stays on screen.
+nonisolated enum ExerciseFrameRetryPolicy {
+    static let baseDelay: Duration = .seconds(15)
+    static let maximumDelay: Duration = .seconds(60)
+
+    static func delay(attempt: Int) -> Duration {
+        let exponent = min(max(attempt, 0), 2)
+        return min(baseDelay * (1 << exponent), maximumDelay)
     }
 }
 

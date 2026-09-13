@@ -260,6 +260,15 @@ struct ExerciseVisualAssetResolverTests {
         #expect(FileManager.default.fileExists(atPath: cached.path))
     }
 
+    @Test func staticThumbnailRetryBackoffMatchesAndroid() {
+        // 15 s, 30 s, then capped at the store's 60 s failure-memoization window.
+        #expect(ExerciseFrameRetryPolicy.delay(attempt: 0) == .seconds(15))
+        #expect(ExerciseFrameRetryPolicy.delay(attempt: 1) == .seconds(30))
+        #expect(ExerciseFrameRetryPolicy.delay(attempt: 2) == .seconds(60))
+        #expect(ExerciseFrameRetryPolicy.delay(attempt: 9) == .seconds(60))
+        #expect(ExerciseFrameRetryPolicy.delay(attempt: -1) == .seconds(15))
+    }
+
     @Test func frameDataValidationMatchesAndroidRules() {
         let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0])
         let digest = String(SHA256.hash(data: png).map { String(format: "%02x", $0) }.joined().prefix(16))
