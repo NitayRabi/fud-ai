@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Publish the workout frame corpus to a Cloudflare R2 bucket (optional tooling).
+"""Publish the workout frame corpus to the Cloudflare R2 bucket behind the CDN.
 
-Shipping builds bundle the corpus locally and never contact a CDN; this script only
-exists for the optional debug download path (`WorkoutFrameStore` with an explicit
-base URL override), which requests frames as `<base-url>/<name>.png?v=<digest>`,
-where `<digest>` comes from `exercise-visual-manifest.json`. Objects are therefore
-uploaded flat (`workout-vectors/v2/<name>.png`) with a long immutable cache
-lifetime; a repaired frame gets a new digest and thus a new cache key automatically.
+Shipping builds bundle only the manifest and download frames on demand as
+`<base-url>/<name>.png?v=<digest>` (default base URL
+`https://assets.fud-ai.app/workout-vectors/v2`), where `<digest>` comes from
+`exercise-visual-manifest.json`. Objects are therefore uploaded flat
+(`workout-vectors/v2/<name>.png`) with a long immutable cache lifetime; a
+repaired frame gets a new digest and thus a new CDN cache key automatically.
+This is the only upload path: run it after every `sync_workout_visual_assets.py`
+that changed a frame, before shipping the matching app release.
 
 Prerequisites (one-time):
 

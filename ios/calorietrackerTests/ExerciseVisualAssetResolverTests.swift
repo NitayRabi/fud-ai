@@ -126,7 +126,7 @@ struct ExerciseVisualAssetResolverTests {
         #expect(asset.frames == svgNames.map { authoredFrame($0, format: .svg) })
     }
 
-    @Test func bundledManifestDescribesV2PNGsThatShipInTheBundle() throws {
+    @Test func bundledManifestDescribesV2PNGsWithoutBundlingTheCorpus() throws {
         let manifestData = try #require(NSDataAsset(name: "ExerciseVisualManifest")?.data)
         let manifest = try ExerciseVisualManifest(data: manifestData)
         let entry = try #require(manifest.entry(for: "Barbell_Full_Squat"))
@@ -148,24 +148,25 @@ struct ExerciseVisualAssetResolverTests {
                     continue
                 }
                 #expect(authored.digest != nil)
-                // Frames are copied from shared/workout-vectors by the "Copy Workout Frames"
-                // build phase, byte-identical to the canonical corpus, so they render offline
-                // with no CDN.
-                let bundled = try #require(WorkoutFrameStore.bundledURL(for: authored))
-                #expect(bundled.lastPathComponent == "\(authored.name).png")
-                let bytes = try Data(contentsOf: bundled)
-                #expect(WorkoutFrameStore.looksLikePNG(bytes))
-                #expect(WorkoutFrameStore.data(bytes, matchesDigest: authored.digest))
-                // The corpus must not additionally be compiled into the asset catalog.
+                // The 1.2 GB corpus must never be compiled into the asset catalog again.
                 #expect(UIImage(named: authored.name) == nil)
+                // Barbell_Full_Squat is in the Debug sample pack; when the build phase bundled
+                // it, the copy must be byte-identical to the canonical corpus.
+                if let bundled = WorkoutFrameStore.bundledURL(for: authored) {
+                    #expect(bundled.lastPathComponent == "\(authored.name).png")
+                    let bytes = try Data(contentsOf: bundled)
+                    #expect(WorkoutFrameStore.looksLikePNG(bytes))
+                    #expect(WorkoutFrameStore.data(bytes, matchesDigest: authored.digest))
+                }
             }
         }
     }
 
-    @Test func frameDownloadsAreDisabledWithoutAnExplicitDebugOverride() {
+    @Test func frameDownloadsDefaultToTheProductionCDN() {
+        #expect(WorkoutFrameStore.defaultBaseURL.absoluteString == "https://assets.fud-ai.app/workout-vectors/v2")
         // A developer scheme may set the launch argument; only assert the default state.
         guard UserDefaults.standard.string(forKey: WorkoutFrameStore.baseURLOverrideKey) == nil else { return }
-        #expect(WorkoutFrameStore.configuredBaseURL() == nil)
+        #expect(WorkoutFrameStore.configuredBaseURL() == WorkoutFrameStore.defaultBaseURL)
     }
 
     @Test func frameStoreNamingRules() {
@@ -217,7 +218,7 @@ struct ExerciseVisualAssetResolverTests {
         #expect(await store.offlineURL(for: frame) == nil)
     }
 
-    @Test func frameStoreDiscardsCorruptCacheEntriesAndFallsBackToBundle() async throws {
+    @Test func frameStoreDiscardsCorruptCacheEntries() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("workout-frame-store-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -229,16 +230,19 @@ struct ExerciseVisualAssetResolverTests {
         let entry = try #require(manifest.entry(for: "Barbell_Full_Squat"))
         let frame = entry.authoredFrames(for: .male)[2]
         #expect(frame.digest != nil)
-        let bundled = try #require(WorkoutFrameStore.bundledURL(for: frame))
+        // Barbell_Full_Squat is in the Debug sample pack, so a Debug test bundle serves it
+        // from the bundle once the cache entry is rejected; a release-parity bundle has no
+        // frames and falls through to nil (no base URL → no download).
+        let bundled = WorkoutFrameStore.bundledURL(for: frame)
         let cached = store.cacheFileURL(for: frame)
 
         // A valid PNG header whose bytes do not match the manifest digest (e.g. a torn write
-        // or a leftover from an older download) must not hide the bundled frame.
+        // or a leftover from an older revision) must be discarded, never served.
         try Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0]).write(to: cached)
         #expect(await store.offlineURL(for: frame) == bundled)
         #expect(!FileManager.default.fileExists(atPath: cached.path))
 
-        // Not a PNG at all.
+        // Not a PNG at all (e.g. a captive-portal HTML page written by an older build).
         try Data("<html>offline</html>".utf8).write(to: cached)
         #expect(await store.localURL(for: frame) == bundled)
         #expect(!FileManager.default.fileExists(atPath: cached.path))
@@ -248,10 +252,21 @@ struct ExerciseVisualAssetResolverTests {
         #expect(await store.offlineURL(for: frame) == bundled)
         #expect(!FileManager.default.fileExists(atPath: cached.path))
 
-        // A byte-exact copy of the frame verifies and is preferred over the bundle.
-        try Data(contentsOf: bundled).write(to: cached)
+        // A byte-exact copy of the frame verifies and is served from the cache.
+        let canonical = try Data(contentsOf: try #require(bundled ?? canonicalCorpusURL(for: frame)))
+        #expect(WorkoutFrameStore.isValidFrameData(canonical, for: frame))
+        try canonical.write(to: cached)
         #expect(await store.offlineURL(for: frame) == cached)
         #expect(FileManager.default.fileExists(atPath: cached.path))
+    }
+
+    @Test func staticThumbnailRetryBackoffMatchesAndroid() {
+        // 15 s, 30 s, then capped at the store's 60 s failure-memoization window.
+        #expect(ExerciseFrameRetryPolicy.delay(attempt: 0) == .seconds(15))
+        #expect(ExerciseFrameRetryPolicy.delay(attempt: 1) == .seconds(30))
+        #expect(ExerciseFrameRetryPolicy.delay(attempt: 2) == .seconds(60))
+        #expect(ExerciseFrameRetryPolicy.delay(attempt: 9) == .seconds(60))
+        #expect(ExerciseFrameRetryPolicy.delay(attempt: -1) == .seconds(15))
     }
 
     @Test func frameDataValidationMatchesAndroidRules() {
@@ -268,35 +283,61 @@ struct ExerciseVisualAssetResolverTests {
         #expect(!WorkoutFrameStore.isValidFrameData(Data(repeating: 0x89, count: 4 * 1_024 * 1_024 + 1), for: ExerciseAuthoredFrame(name: frame.name, digest: nil, format: .png)))
     }
 
-    @Test func bundledCorpusContainsOnlyManifestAndFrames() throws {
-        let bundle = Bundle.main
-        let folder = try #require(bundle.url(forResource: WorkoutFrameStore.bundledFrameDirectory, withExtension: nil))
-        let names = try FileManager.default.contentsOfDirectory(atPath: folder.path)
-        let manifestName = "exercise-visual-manifest.json"
-
-        #expect(names.contains(manifestName))
-        #expect(!names.contains("README.md"))
-        #expect(!names.contains("sample-pack.txt"))
-        #expect(!names.contains { $0.hasSuffix(".svg") })
-        let unexpected = names.filter { $0 != manifestName && !($0.contains("_v2_") && $0.hasSuffix(".png")) }
-        #expect(unexpected.isEmpty, "tooling files leaked into the bundle: \(unexpected)")
-
-        // The bundled manifest is the same document the asset catalog carries, and the
-        // bundled frame set is exactly its male/female sequences.
-        let bundledManifest = try Data(contentsOf: folder.appendingPathComponent(manifestName))
-        #expect(bundledManifest == NSDataAsset(name: "ExerciseVisualManifest")?.data)
-        let document = try #require(try JSONSerialization.jsonObject(with: bundledManifest) as? [String: Any])
+    /// The corpus must never ship: at most the Debug sample pack may be in the bundle, and
+    /// every bundled frame must be a manifest frame that is byte-identical to the corpus.
+    @Test func bundleNeverContainsTheFrameCorpus() throws {
+        let manifestData = try #require(NSDataAsset(name: "ExerciseVisualManifest")?.data)
+        let document = try #require(try JSONSerialization.jsonObject(with: manifestData) as? [String: Any])
         let exercises = try #require(document["exercises"] as? [[String: Any]])
-        var expected: Set<String> = [manifestName]
+        #expect(exercises.count == 875)
+        var manifestFrames: [String: String?] = [:]
         for exercise in exercises {
-            for key in ["maleFrames", "femaleFrames"] {
-                for frame in try #require(exercise[key] as? [String]) {
-                    expected.insert("\(frame).png")
+            for (namesKey, digestsKey) in [("maleFrames", "maleFrameDigests"), ("femaleFrames", "femaleFrameDigests")] {
+                let names = try #require(exercise[namesKey] as? [String])
+                let digests = exercise[digestsKey] as? [String?] ?? Array(repeating: nil, count: names.count)
+                for (name, digest) in zip(names, digests) {
+                    manifestFrames["\(name).png"] = digest
                 }
             }
         }
-        #expect(exercises.count == 875)
-        #expect(Set(names) == expected)
+        #expect(manifestFrames.count == 7_000)
+
+        // A frame outside the sample pack must never be bundled, in any configuration.
+        let outsideSample = ExerciseAuthoredFrame(name: "Ab_Roller_male_v2_0", digest: nil, format: .png)
+        #expect(manifestFrames["Ab_Roller_male_v2_0.png"] != nil)
+        #expect(WorkoutFrameStore.bundledURL(for: outsideSample) == nil)
+
+        let folder = Bundle.main.url(forResource: WorkoutFrameStore.bundledFrameDirectory, withExtension: nil)
+        #if DEBUG
+        // Debug builds may carry the sample pack (12 exercises × 2 genders × 4 frames) or,
+        // with WORKOUT_VECTORS=none, nothing at all.
+        let maximumBundledFrames = 12 * 2 * 4
+        #else
+        #expect(folder == nil, "release builds must bundle no workout frames")
+        let maximumBundledFrames = 0
+        #endif
+        guard let folder else { return }
+
+        let names = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+        #expect(names.count <= maximumBundledFrames, "bundled \(names.count) frames; only the sample pack may ship in Debug")
+        let unexpected = names.filter { !($0.contains("_v2_") && $0.hasSuffix(".png")) }
+        #expect(unexpected.isEmpty, "tooling files leaked into the bundle: \(unexpected)")
+        for name in names {
+            let digest = try #require(manifestFrames[name], "bundled frame is not in the manifest: \(name)")
+            let bytes = try Data(contentsOf: folder.appendingPathComponent(name))
+            #expect(WorkoutFrameStore.looksLikePNG(bytes))
+            #expect(WorkoutFrameStore.data(bytes, matchesDigest: digest), "bundled frame differs from the corpus: \(name)")
+        }
+    }
+
+    /// `shared/workout-vectors/<name>.png` in the checkout, when the tests run next to it.
+    private func canonicalCorpusURL(for frame: ExerciseAuthoredFrame) -> URL? {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // calorietrackerTests
+            .deletingLastPathComponent() // ios
+            .deletingLastPathComponent() // repository root
+            .appendingPathComponent("shared/workout-vectors/\(frame.name).\(frame.fileExtension)")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
     private func authoredFrame(_ name: String, format: ExerciseVisualAsset.Format) -> ExerciseVisualFrame {

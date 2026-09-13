@@ -36,62 +36,90 @@ the male artwork until a dedicated inclusive visual set is designed.
 
 ## Platform packaging and runtime delivery
 
-**Product decision: frames are local.** The corpus is ~1.2 GB (7,000 PNGs at roughly
-175 KB each) and the complete set is **packaged into both apps** so every exercise
-animates offline with no network dependency — there is no required CDN and shipping
-builds never contact `assets.fud-ai.app`. This directory stays the single canonical
-copy: neither platform keeps a second checked-in copy of the frames (no iOS
-`*.imageset`s), both consume this folder directly at build time.
+The corpus is ~1.2 GB (7,000 PNGs at roughly 175 KB each). It is **never packaged
+into a store binary**: Google Play caps the base module at 200 MB and the IPA would
+grow by ~1.3 GB. Only `exercise-visual-manifest.json` (~0.75 MB) ships in the apps;
+this directory is the single canonical copy of the frames (no iOS image-set copies).
 
-| | Android | iOS |
+Frames are delivered **on demand, per frame, over HTTPS** and cached on the device.
+Shipping builds therefore contact Fud AI's static asset CDN the first time an
+exercise's illustration is shown (a plain image request carrying no account or
+device identifier; see the Privacy section of the main README):
+
+| Step | Android (`WorkoutFrameStore.kt`, Coil fetcher) | iOS (`WorkoutFrameStore.swift`) |
 | --- | --- | --- |
-| Packaging | `app/build.gradle.kts` task `prepare<Variant>WorkoutVectorAssets` copies `*_v2_*.png` + the manifest into a generated assets directory (flat `assets/<name>.png`) for **every** build type, release included | the app target's **Copy Workout Frames** run-script phase (`ios/scripts/copy_workout_frames.sh`) copies `*_v2_*.png` + the manifest → `calorietracker.app/workout-vectors/<name>.png` |
-| Filtering | only the manifest and `*_v2_*.png` are packaged; the copied set must equal the manifest's frame sequences or the build fails | same filter and same manifest check; `README.md`, `sample-pack.txt` and the SVG pilot never enter the IPA |
-| Manifest | `exercise-visual-manifest.json` asset | `Assets.xcassets/ExerciseVisualManifest.dataset` (byte-identical) |
-| Runtime | `WorkoutFrameStore.kt` (Coil fetcher) | `WorkoutFrameStore.swift` |
-| Resolution order | 1. device cache → 2. **bundled asset** → 3. download, only if `BuildConfig.WORKOUT_VECTORS_BASE_URL` is non-empty | 1. device cache → 2. **bundled `workout-vectors/`** → 3. download, only if a base URL is configured |
-| Download default | `""` in every build type (disabled) | `nil` (disabled); no default base URL exists in code |
-| Debug opt-in | `workout.vectors.base.url=…` in `android/local.properties` (debug/debug2 only) | launch argument `-WorkoutVectorsBaseURL …` (Debug only) |
+| 1. device cache | `cacheDir/workout-vectors/v2/<name>.<digest>.png` | `Caches/WorkoutVectors/v2/<name>.<digest>.png` |
+| 2. bundled sample | debug builds only (Gradle copies the sample pack into assets) | Debug builds only (`Copy Workout Frames` phase → `calorietracker.app/workout-vectors/`) |
+| 3. download | `BuildConfig.WORKOUT_VECTORS_BASE_URL` | `WorkoutFrameStore.defaultBaseURL` (Debug: `-WorkoutVectorsBaseURL` override) |
 
-Bundled frames are trusted as-is (the APK/AAB and the IPA are code-signed, and the
-packaging steps copy the frames byte-for-byte — real copies, never hard links or
-symlinks, so build outputs can be cleaned without touching this directory);
-`sync_workout_visual_assets.py --check` and both packaging steps verify at build time
-that the bundled set is exactly the manifest's frame sequences, and the iOS unit tests
-confirm the bundled bytes match the manifest digests and that no tooling files leaked
-into the bundle. The per-frame 16-hex SHA-256 prefixes in the manifest
-(`maleFrameDigests` / `femaleFrameDigests`) remain the cache filename and integrity
-check for the device cache and the optional download path
-(`<base>/<name>.png?v=<digest>`), so that path stays safe to enable. On both platforms a
-cached file is served only after it verifies (size, PNG signature, digest); anything
-else is deleted and the bundled frame is used, so a corrupt cache entry can never hide
-a bundled frame behind the placeholder.
+The download URL is `<base>/<name>.png?v=<digest>` where `<digest>` is the 16-hex
+SHA-256 prefix recorded per frame in the manifest (`maleFrameDigests` /
+`femaleFrameDigests`). The digest is the CDN cache key and the cache filename, and the
+downloaded bytes are verified against it (after a 4 MB size cap and a PNG signature
+check) before being written atomically into the cache, so a repaired frame published
+under the same name invalidates every cache automatically. A cached file is likewise
+served only after it verifies; anything else is deleted and re-downloaded. A frame that
+cannot be produced (offline before the first download, CDN unreachable) leaves the
+existing icon placeholder in place — the same behaviour v6.1 shipped with; the app
+never crashes or shows a broken image. Failures are remembered for 60 s so an offline
+user is not retried on every animation tick, and the device cache is trimmed to
+~192 MB once it passes 256 MB. Opening one exercise costs ~0.7 MB (four frames for the
+selected gender); no bulk download is required.
 
-A frame that is genuinely missing from the corpus leaves the existing icon placeholder
-in place; failures are remembered for 60 s so a missing frame is not retried on every
-animation tick.
+Default base URL: `https://assets.fud-ai.app/workout-vectors/v2` — an R2 bucket
+(`fud-ai-assets`) connected to that custom domain. Provisioning + upload
+(`scripts/publish_workout_vectors.py` is the only upload path):
 
-### Known ship blocker: store size
+```sh
+wrangler r2 bucket create fud-ai-assets
+# Cloudflare dashboard → R2 → fud-ai-assets → Settings → Custom Domains → assets.fud-ai.app
+# configure an rclone remote named "r2" (https://developers.cloudflare.com/r2/examples/rclone/)
+python3 scripts/publish_workout_vectors.py --dry-run
+python3 scripts/publish_workout_vectors.py
+```
 
-- **Google Play:** the AAB base module is now ~1.2 GB, far above Play's 200 MB base
-  module cap; Play will reject the upload as-is. **The owner accepts this for now** in
-  exchange for offline, dependency-free images. Sideloaded / GitHub-release APKs are
-  unaffected. Options when this must be resolved: Play Asset Delivery (install-time
-  asset pack), or on-device download of a subset — neither is wired up today.
-- **App Store:** the IPA grows by ~1.2 GB. This is within Apple's 4 GB limit, but
-  users on cellular see the >200 MB download prompt and the first install takes
-  noticeably longer.
+Frames upload with `Cache-Control: public, max-age=31536000, immutable`; the manifest
+copy uploads with a five-minute lifetime for tooling that wants to read it remotely.
+Until the bucket is provisioned and populated, shipping builds simply show the icon
+placeholder for every exercise.
+
+### Release guards
+
+Both build systems refuse to package the corpus into a store binary:
+
+- **Android** — `app/build.gradle.kts` task `prepare<Variant>WorkoutVectorAssets`
+  always uses manifest-only inputs for the release variant, throws on
+  `assembleRelease`/`bundleRelease -PworkoutVectors=sample|all`, and re-checks the
+  files it actually wrote so a release asset directory can never hold anything but
+  the manifest. `BuildConfig.WORKOUT_VECTORS_BASE_URL` is the production CDN in
+  release; the `local.properties` override only applies to debug/debug2. The unit
+  test `releaseBuildsShipTheManifestOnlyAndFetchFramesFromTheCdn` pins these rules.
+- **iOS** — the app target's **Copy Workout Frames** run-script phase
+  (`ios/scripts/copy_workout_frames.sh`) copies the sample pack for `Debug` only.
+  For any other configuration it forces `WORKOUT_VECTORS=none`, rejects every other
+  value, and **fails the build if any `*_v2_*.png` is found in the bundle**, whatever
+  put it there. Because extensions and the Watch app are embedded *after* that phase, a
+  second, read-only **Verify Workout Frames** phase
+  (`ios/scripts/verify_workout_frames.sh`) runs as the target's last build phase and
+  re-scans the finished `.app` — `PlugIns/*.appex` and `Watch/*.app` included — failing
+  the build on any leaked frame (Debug: any frame outside `workout-vectors/`).
+  `sync_workout_visual_assets.py --check` verifies (by following the Xcode object
+  graph) that both phases are attached to the app target, that Verify is last, and
+  that no folder reference points at this directory; the unit test
+  `bundleNeverContainsTheFrameCorpus` asserts at most the sample pack is bundled and
+  that a non-sample frame is absent. The manifest ships only as the
+  `ExerciseVisualManifest` asset-catalog data set.
 
 ### Debug / development workflows
 
-- **Android:** every build type bundles the whole corpus by default. To iterate faster
-  locally, debug and debug2 builds accept `-PworkoutVectors=sample` (the 12 exercises /
-  96 frames listed in [`sample-pack.txt`](sample-pack.txt), ~15 MB) or
-  `-PworkoutVectors=none` (manifest only). Release packaging (`assembleRelease` /
-  `bundleRelease`) refuses both overrides; tasks that package nothing (unit tests, lint)
-  accept them, which is how the Quality checks workflow runs `:app:testDebugUnitTest
-  :app:lintRelease -PworkoutVectors=none` without touching the corpus. When frames are
-  not bundled, the debug build can fall back to downloads from a local server:
+- **Android:** debug and debug2 builds bundle the sample pack listed in
+  [`sample-pack.txt`](sample-pack.txt) (12 exercises, 96 frames, ~15 MB) as flat assets,
+  so those exercises animate offline. `-PworkoutVectors=all` bundles the whole corpus for
+  local QA, `-PworkoutVectors=none` gives release parity (the Quality checks workflow
+  runs `:app:testDebugUnitTest :app:lintRelease -PworkoutVectors=none` so CI never
+  copies frames). Release builds refuse anything but the manifest. To test downloads
+  against the corpus without a CDN, serve it locally and point the debug build at it in
+  `android/local.properties`:
 
   ```sh
   python3 -m http.server -d shared/workout-vectors 8765
@@ -99,15 +127,14 @@ animation tick.
   workout.vectors.base.url=http://10.0.2.2:8765
   ```
 
-- **iOS:** the Copy Workout Frames phase runs for Debug and Release alike, so both always
-  bundle the whole corpus (incrementally — unchanged frames are not re-copied); no
-  developer sample folder is needed. To exercise the download path, run the same local
-  server and add the launch argument `-WorkoutVectorsBaseURL http://localhost:8765` to
-  the calorietracker scheme (ATS already allows local networking).
-
-- **Optional CDN mirror:** `scripts/publish_workout_vectors.py` can still upload the
-  corpus to an R2 bucket for the debug download path, but nothing in a shipping build
-  depends on it.
+- **iOS:** Debug builds bundle the same sample pack via the Copy Workout Frames phase;
+  pass the build setting `WORKOUT_VECTORS=none` for release parity or
+  `WORKOUT_VECTORS=all` for local QA (`xcodebuild … WORKOUT_VECTORS=all`, or a
+  user-defined setting in a personal xcconfig). To exercise the download path, run the
+  same local server and add the launch argument `-WorkoutVectorsBaseURL
+  http://localhost:8765` to the calorietracker scheme (ATS already allows local
+  networking); `-WorkoutVectorsBaseURL none` disables downloads to test offline
+  behaviour.
 
 The original SVG pilot is retained for comparison but is no longer referenced by the
 runtime manifest. Its deterministic generator validates only those legacy SVG files
@@ -120,15 +147,16 @@ python3 scripts/generate_barbell_full_squat_svg_pilot.py --check
 The sync command intentionally rejects partial corpora, unknown exercise IDs, any
 `*_v2_*.imageset` reappearing in the iOS asset catalog, an Xcode project whose app
 target no longer runs the Copy Workout Frames phase (checked by following the project's
-object references, not by string search) or that copies this raw directory as a folder
-reference, and anything other than the complete 875-exercise/7,000-frame set
+object references, not by string search) or that references this raw directory as a
+bundled folder, and anything other than the complete 875-exercise/7,000-frame set
 (`Running_Outdoor` and `Walking_Outdoor` are quick-log activities without
 illustrations). After changing a v2 sequence, regenerate both runtime manifests (frame
-names + digests) and validate; the next app build picks the frames up automatically:
+names + digests), validate, then publish to the CDN:
 
 ```sh
 python3 scripts/sync_workout_visual_assets.py
 python3 scripts/sync_workout_visual_assets.py --check
+python3 scripts/publish_workout_vectors.py
 ```
 
 For pixel-level QA, install Pillow and run the following check. It decodes every
