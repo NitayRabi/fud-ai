@@ -98,9 +98,14 @@ Both build systems refuse to package the corpus into a store binary:
   (`ios/scripts/copy_workout_frames.sh`) copies the sample pack for `Debug` only.
   For any other configuration it forces `WORKOUT_VECTORS=none`, rejects every other
   value, and **fails the build if any `*_v2_*.png` is found in the bundle**, whatever
-  put it there. `sync_workout_visual_assets.py --check` verifies (by following the
-  Xcode object graph) that the phase is still attached to the app target and that no
-  folder reference points at this directory; the unit test
+  put it there. Because extensions and the Watch app are embedded *after* that phase, a
+  second, read-only **Verify Workout Frames** phase
+  (`ios/scripts/verify_workout_frames.sh`) runs as the target's last build phase and
+  re-scans the finished `.app` — `PlugIns/*.appex` and `Watch/*.app` included — failing
+  the build on any leaked frame (Debug: any frame outside `workout-vectors/`).
+  `sync_workout_visual_assets.py --check` verifies (by following the Xcode object
+  graph) that both phases are attached to the app target, that Verify is last, and
+  that no folder reference points at this directory; the unit test
   `bundleNeverContainsTheFrameCorpus` asserts at most the sample pack is bundled and
   that a non-sample frame is absent. The manifest ships only as the
   `ExerciseVisualManifest` asset-catalog data set.

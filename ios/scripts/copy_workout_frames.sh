@@ -77,9 +77,12 @@ manifest_count=$(printf '%s\n' "$manifest_frames" | grep -c .)
 rm -rf "$DESTINATION"
 
 if [ "$mode" = none ]; then
-    # Release guard: no authored frame may be anywhere in the bundle, whatever put it there
-    # (a stray developer folder picked up by the synchronized group, an old build phase...).
-    leaked=$(find "$BUNDLE" -name '*_v2_*.png' -not -path '*/PlugIns/*' 2>/dev/null | head -8)
+    # Release guard: no authored frame may be anywhere in the bundle so far, whatever put it
+    # there (a stray developer folder picked up by the synchronized group, an old build
+    # phase...). Extensions and the Watch app are embedded *after* this phase, so the
+    # "Verify Workout Frames" phase (scripts/verify_workout_frames.sh) re-scans the
+    # finished bundle, PlugIns and Watch included, as the last step of the build.
+    leaked=$(find "$BUNDLE" -name '*_v2_*.png' 2>/dev/null | head -8)
     if [ -n "$leaked" ]; then
         echo "error: workout frames: $CONFIGURATION bundle contains authored workout frames:" >&2
         printf '%s\n' "$leaked" | sed 's/^/    /' >&2

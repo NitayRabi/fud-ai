@@ -302,6 +302,7 @@
 				F00D60000000000000000013 /* Copy Workout Frames */,
 				BA8E0E2C2F33F198007DD537 /* Embed Foundation Extensions */,
 				F00D10000000000000000005 /* Embed Watch Content */,
+				F00D60000000000000000014 /* Verify Workout Frames */,
 			);
 			buildRules = (
 			);
@@ -616,6 +617,27 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "# Debug: bundle the workout-frame sample pack. Release: bundle no frames and fail if any leaked (frames come from the CDN).\n/bin/sh \"${SRCROOT}/scripts/copy_workout_frames.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		F00D60000000000000000014 /* Verify Workout Frames */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/scripts/verify_workout_frames.sh",
+			);
+			name = "Verify Workout Frames";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Final leak check after extensions and Watch content are embedded: no authored workout frame may be in the bundle (Debug: only the sample pack in workout-vectors/).\n/bin/sh \"${SRCROOT}/scripts/verify_workout_frames.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */

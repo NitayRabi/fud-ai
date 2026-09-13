@@ -65,6 +65,10 @@ IOS_COPY_PHASE_INPUTS = {
     "$(SRCROOT)/../shared/workout-vectors",
 }
 IOS_COPY_PHASE_OUTPUT = "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/workout-vectors"
+# The read-only phase that scans the *finished* bundle (PlugIns + Watch included) for
+# leaked frames. It must be the last build phase, after every PBXCopyFilesBuildPhase.
+IOS_VERIFY_SCRIPT = REPOSITORY_ROOT / "ios" / "scripts" / "verify_workout_frames.sh"
+IOS_VERIFY_SCRIPT_INVOCATION = "${SRCROOT}/scripts/verify_workout_frames.sh"
 PBXPROJ_OBJECT_ID = re.compile(r"[0-9A-F]{24}")
 PBXPROJ_OBJECT_START = re.compile(
     r"^\t\t(?P<id>[0-9A-F]{24}) (?:/\* (?P<comment>.*?) \*/ )?= \{", re.MULTILINE
@@ -369,10 +373,12 @@ def pbxproj_list(body: str, key: str) -> list[str]:
 
 
 def enforce_ios_frame_build_phase() -> None:
-    """The calorietracker app target must run the workout-frame build phase.
+    """The calorietracker app target must run both workout-frame build phases.
 
-    The phase copies only the Debug sample pack and, for Release, fails the build if
-    any `*_v2_*.png` reached the bundle, so it is the iOS release-size guard.
+    "Copy Workout Frames" copies only the Debug sample pack and, for Release, fails the
+    build if any `*_v2_*.png` reached the bundle so far. Extensions and the Watch app are
+    embedded after it, so "Verify Workout Frames" must be the target's last build phase
+    and re-scan the finished bundle; together they are the iOS release-size guard.
 
     Follows the real object graph — app target → buildPhases → shell-script phase —
     rather than searching the file for strings, so detaching the phase from the target
@@ -382,6 +388,8 @@ def enforce_ios_frame_build_phase() -> None:
         raise ValueError(f"missing iOS project: {display_path(IOS_PROJECT)}")
     if not IOS_COPY_SCRIPT.is_file():
         raise ValueError(f"missing iOS copy script: {display_path(IOS_COPY_SCRIPT)}")
+    if not IOS_VERIFY_SCRIPT.is_file():
+        raise ValueError(f"missing iOS verify script: {display_path(IOS_VERIFY_SCRIPT)}")
     project_name = display_path(IOS_PROJECT)
     objects = pbxproj_objects(IOS_PROJECT.read_text())
 
@@ -400,16 +408,22 @@ def enforce_ios_frame_build_phase() -> None:
     target_id, target_body = app_targets[0]
 
     copy_phases: list[str] = []
+    verify_phases: list[str] = []
+    ordered_phases: list[str] = []
     for phase_id in pbxproj_list(target_body, "buildPhases"):
         if PBXPROJ_OBJECT_ID.fullmatch(phase_id) is None:
             raise ValueError(f"{project_name}: malformed build phase reference {phase_id!r}")
         phase = objects.get(phase_id)
         if phase is None:
             raise ValueError(f"{project_name}: target {target_id} references missing phase {phase_id}")
+        ordered_phases.append(phase_id)
         if pbxproj_value(phase, "isa") != "PBXShellScriptBuildPhase":
             continue
-        if IOS_COPY_SCRIPT_INVOCATION in (pbxproj_value(phase, "shellScript") or ""):
+        script = pbxproj_value(phase, "shellScript") or ""
+        if IOS_COPY_SCRIPT_INVOCATION in script:
             copy_phases.append(phase_id)
+        if IOS_VERIFY_SCRIPT_INVOCATION in script:
+            verify_phases.append(phase_id)
     if len(copy_phases) != 1:
         raise ValueError(
             f"{project_name}: the {IOS_APP_TARGET_NAME} target must run exactly one "
@@ -432,6 +446,22 @@ def enforce_ios_frame_build_phase() -> None:
         )
     if pbxproj_value(phase, "runOnlyForDeploymentPostprocessing") != "0":
         raise ValueError(f"{project_name}: Copy Workout Frames phase must run for every build")
+
+    if len(verify_phases) != 1:
+        raise ValueError(
+            f"{project_name}: the {IOS_APP_TARGET_NAME} target must run exactly one "
+            f"build phase invoking {IOS_VERIFY_SCRIPT_INVOCATION}, found {len(verify_phases)}; "
+            "it re-checks the finished bundle (PlugIns + Watch) for leaked workout frames"
+        )
+    verify_phase = objects[verify_phases[0]]
+    if pbxproj_value(verify_phase, "runOnlyForDeploymentPostprocessing") != "0":
+        raise ValueError(f"{project_name}: Verify Workout Frames phase must run for every build")
+    if ordered_phases[-1] != verify_phases[0]:
+        raise ValueError(
+            f"{project_name}: Verify Workout Frames must be the last build phase of the "
+            f"{IOS_APP_TARGET_NAME} target (after every Embed phase), found it at index "
+            f"{ordered_phases.index(verify_phases[0])} of {len(ordered_phases)}"
+        )
 
     # The raw directory must not also be copied wholesale (README, sample list, SVG pilot).
     for object_id, body in objects.items():
