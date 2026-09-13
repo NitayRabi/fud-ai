@@ -176,22 +176,27 @@ class ExerciseVisualResolverTest {
     }
 
     @Test
-    fun releaseBuildsBundleTheCompleteFrameCorpusWithoutACdn() {
+    fun releaseBuildsShipTheManifestOnlyAndFetchFramesFromTheCdn() {
         val gradleFile = File(repositoryRoot(), "android/app/build.gradle.kts")
         val script = gradleFile.readText()
         assertTrue(
-            "shared/workout-vectors must be packaged through the filtered asset task, not as a raw assets.srcDir",
+            "shared/workout-vectors must not be an assets.srcDir; frames ship via WorkoutFrameStore",
             !script.contains("\"../../shared/workout-vectors\"")
         )
-        assertTrue("every variant must default to the whole corpus", script.contains("requested == null -> \"all\""))
+        assertTrue("release variants must always use manifest-only inputs", script.contains("isRelease -> \"none\""))
+        assertTrue("debug variants default to the sample pack", script.contains("requested == null -> \"sample\""))
         assertTrue(
-            "release packaging must refuse anything but the whole corpus",
-            script.contains("if (release.get() && requested != null && requested != \"all\")") &&
-                script.contains("store binaries must bundle the complete workout frame corpus")
+            "release packaging must refuse -PworkoutVectors=sample|all",
+            script.contains("if (release.get() && requested != null && requested != \"none\")") &&
+                script.contains("store binaries must only bundle the manifest")
         )
         assertTrue(
-            "release must not depend on a workout-frame CDN",
-            script.contains("val workoutVectorsDefaultBaseUrl = \"\"") && !script.contains("assets.fud-ai.app")
+            "the production CDN must be the default frame source",
+            script.contains("val workoutVectorsDefaultBaseUrl = \"https://assets.fud-ai.app/workout-vectors/v2\"")
+        )
+        assertTrue(
+            "release must ship the production base URL, not the local.properties override",
+            script.contains("buildConfigField(\"String\", \"WORKOUT_VECTORS_BASE_URL\", \"\\\"\$workoutVectorsDefaultBaseUrl\\\"\")")
         )
     }
 
