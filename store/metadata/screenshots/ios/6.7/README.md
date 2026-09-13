@@ -1,2 +1,2 @@
-# Place App Store 6.7" screenshots here before enabling STORE_UPLOAD_SCREENSHOTS.
-# Source marketing shots: web/assets/screenshots/ (may need device-frame resize for ASC).
+# ASC 6.7" (APP_IPHONE_67) screenshots. Staged from web/assets/screenshots/ by
+# scripts/store/stage_screenshots.py (resize/device frames may be needed for ASC).

@@ -1,3 +1,3 @@
-# Place Play phone screenshots here (PNG) before enabling STORE_UPLOAD_SCREENSHOTS.
-# Source marketing shots: web/assets/screenshots/
+# Play phone screenshots (PNG). CI copies from web/assets/screenshots/ via
+# scripts/store/stage_screenshots.py when STORE_UPLOAD_SCREENSHOTS is true.
 # Play replaces the entire screenshot set for the locale on upload — review carefully.
