@@ -83,7 +83,11 @@ jobs:
 
       - name: Stage marketing screenshots (when screenshot upload gate is on)
         if: steps.gates.outputs.upload_screenshots == 'true'
-        run: python3 scripts/store/stage_screenshots.py
+        env:
+          STORE_UPLOAD_SCREENSHOTS: "true"
+        run: |
+          python3 -m pip install --disable-pip-version-check -r requirements-store.txt
+          python3 scripts/store/stage_screenshots.py
 
       - name: App Store Connect metadata / submit (gated)
         if: >-
@@ -99,7 +103,10 @@ jobs:
           APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
         run: |
           python3 -m pip install --disable-pip-version-check -r requirements-store.txt
-          python3 scripts/store/asc_release.py --metadata-dir "$RUNNER_TEMP/store-meta"
+          MARKETING_VERSION="${GITHUB_REF_NAME#v}"
+          python3 scripts/store/asc_release.py \
+            --metadata-dir "$RUNNER_TEMP/store-meta" \
+            --version "$MARKETING_VERSION"
 
       - name: App Store Connect metadata / submit (skipped)
         if: >-
