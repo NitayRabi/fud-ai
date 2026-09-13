@@ -2,3 +2,4 @@
 PyJWT[crypto]>=2.8.0,<3
 google-api-python-client>=2.100.0,<3
 google-auth>=2.23.0,<3
+Pillow>=10.0.0,<12

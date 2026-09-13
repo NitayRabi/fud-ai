@@ -104,6 +104,13 @@ def upload_play_store_listing(
             print(f"  updated Play listing ({locale})")
 
         if upload_screenshots:
+            service.edits().images().deleteall(
+                packageName=package_name,
+                editId=edit_id,
+                language=locale,
+                imageType="phoneScreenshots",
+            ).execute()
+            print(f"  cleared existing Play phone screenshots ({locale})")
             pngs = sorted(screenshots_dir.glob("*.png"))
             for path in pngs:
                 media = MediaFileUpload(str(path), mimetype="image/png", resumable=False)
