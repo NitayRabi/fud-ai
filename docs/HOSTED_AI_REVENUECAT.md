@@ -13,6 +13,13 @@ Fud AI keeps the **full app free with BYOK forever** on both platforms.
 
 Configure **Pro** entitlement to include **Plus** in RevenueCat so upgrades behave correctly.
 
+## Canonical catalog (CI)
+
+Product IDs + RevenueCat entitlement/offering maps are also versioned under
+[`store/catalog/`](../store/catalog/) for future GitHub Actions automation.
+See [`store/README.md`](../store/README.md). Live store / RevenueCat sync stays
+**off** until repository Variables are flipped (setup only by default).
+
 ## Product IDs (App Store / iOS)
 
 ### Subscriptions

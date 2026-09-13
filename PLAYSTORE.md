@@ -38,9 +38,9 @@ Snap, speak, or type a meal. AI logs the calories. Open source.
 ```
 Fud AI makes calorie tracking effortless with AI-powered food recognition. Snap a photo, scan a barcode, speak it, or type it — get instant nutrition: calories, protein, carbs, fats, vitamins, minerals, and more.
 
-NEW in v6.1: progressive multi-photo analysis follows ingredients added to one plate. Meals include editable ingredient breakdowns and serving fields include a calculator. You can also import diary JSON, configure app shortcuts, inspect exact weight-chart values, and preview exercises.
+NEW in v6.1: progressive multi-photo analysis follows ingredients on one plate. Meals include editable ingredient breakdowns; serving fields include a calculator. Import diary JSON, configure shortcuts, inspect weight-chart values, and preview exercises.
 
-Nutrition adds custom goals, caffeine, creatine, beta-alanine, L-citrulline, L-carnitine, L-arginine, taurine, betaine, and HMB. Optional fasting adds persistent timers, editable history, goals, alerts, and Coach context. Android also adds a measured daily calorie summary and clearer Health Connect guidance.
+Nutrition adds custom goals, caffeine, creatine, beta-alanine, L-citrulline, L-carnitine, L-arginine, taurine, betaine, and HMB. Optional fasting adds persistent timers, editable history, goals, alerts, and Coach context. Android adds a measured daily calorie summary and clearer Health Connect guidance.
 
 Open source, privacy-first. Bring your own API key.
 
@@ -61,7 +61,7 @@ Use Gemini, OpenAI, Claude, Grok, Groq, OpenRouter, Together, Hugging Face, Fire
 Native Android, Gemini, OpenAI Whisper, Groq, Deepgram, or AssemblyAI, with automatic or fixed language handling.
 
 COACH
-Multi-turn chat can access your profile, goals, food log, progress, workouts, and explicitly logged fasts when requested. It never assumes a missing meal means you fasted. Images are supported.
+Multi-turn chat can access profile, goals, food log, progress, workouts, and logged fasts when requested. It never assumes a missing meal means you fasted. Images supported.
 
 REVIEW BEFORE LOGGING
 Unlock Nutrition to correct calories, macros, and detailed nutrients before saving; serving changes then scale from your edits. What if? previews today's macro impact and can ask AI for a suggestion.
@@ -73,25 +73,25 @@ PERSONALIZED GOALS
 BMR and TDEE calculators, six activity levels, automatic or editable macro targets, and customizable meal-time boundaries.
 
 OPTIONAL NUTRIENT GOALS
-Set expanded nutrient goals separately from the macro calculator — fiber, sugar, fats, sodium, vitamins, minerals, and more. Use AI Estimate or set them manually. Home cards can show macros or selected nutrients.
+Set expanded nutrient goals separately from the macro calculator — fiber, sugar, fats, sodium, vitamins, minerals, and more. Use AI Estimate or set manually.
 
 WIDGETS
 Separate Calorie, Protein, Today, and Water widgets in the Home speedometer style. They refresh from local snapshots when you log.
 
 OPTIONAL WATER TRACKING
-Off by default. Set your own daily goal, quick-log one to three glasses or a custom amount, view progress below calories, schedule a local reminder, and use the dedicated Water widget. Water history stays on your device and is not sent to Health Connect.
+Off by default. Set a daily goal, quick-log glasses or a custom amount, view progress below calories, schedule a reminder, and use the Water widget. Water stays on-device and is not sent to Health Connect.
 
 OPTIONAL FASTING TRACKING
-Off by default. Choose a 1–168 hour goal, start/end/cancel from the Home + menu, keep the timer across app restarts, optionally receive a local goal alert, and edit completed sessions. Fasting stays on your device and is not sent to Health Connect.
+Off by default. Choose a 1–168 hour goal, start/end/cancel from Home +, keep the timer across restarts, optional local alerts, and edit completed sessions. Fasting stays on-device and is not sent to Health Connect.
 
 15 LANGUAGES
 Auto-selected by phone language: English, Spanish, French, German, Italian, Portuguese (BR), Dutch, Russian, Japanese, Korean, Chinese, Hindi, Arabic, Romanian, Azerbaijani, Polish.
 
 PRIVACY FIRST
-Core tracking needs no account and Fud AI has no analytics, behavioral tracking, or ads. The optional 18+ Weekly Challenge creates a first-party challenge profile and uploads only a display name, optional single social handle, anonymous participant ID, and weekly aggregate milestones—never raw food, weight, meal, workout, or Health Connect records. Android backup may apply under system settings. Keys are encrypted; AI/STT requests go directly to your provider. MIT licensed.
+Core tracking needs no account; no analytics, behavioral tracking, or ads. The optional 18+ Weekly Challenge uploads only a display name, optional social handle, anonymous ID, and weekly aggregate milestones—never raw food, weight, meals, workouts, or Health Connect records. Android backup may apply under system settings. Keys encrypted; AI/STT requests go to your provider. MIT licensed.
 
 HEALTH CONNECT
-Optional sync for nutrition, weight, body fat, and calculated workout calories, plus energy reads for goal estimates. Records can restore from Health Connect after reinstall. Fasting is local-only.
+Optional sync for nutrition, weight, body fat, and calculated workout calories, plus energy reads for goal estimates. Records can restore after reinstall. Fasting is local-only.
 
 NOTE: Not medical advice. Estimates are AI-generated; consult a healthcare professional before significant diet changes.
 
