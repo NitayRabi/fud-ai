@@ -1,11 +1,19 @@
 # iOS release bookkeeping — the GitHub-Releases sibling of the Xcode Cloud
 # "Release" workflow. Xcode Cloud does the real work (archive + upload to App
-# Store Connect); this only creates the GitHub Release entry from the same v*
-# tag so the repo's Releases sidebar stays in sync. Notes-only: the IPA lives
-# in ASC, there is nothing meaningful to attach.
+# Store Connect); this creates the GitHub Release entry from the same v* tag.
 #
-# Published as a normal release immediately (Apoorv's preference — store
-# review lag doesn't gate the GitHub entry).
+# Future-proof store gates (repo Variables; all default OFF — see store/README.md):
+#   STORE_SUBMIT_IOS_REVIEW   submit ASC build for review (requires ASC API secrets)
+#   STORE_UPLOAD_LISTING / STORE_UPLOAD_SCREENSHOTS / STORE_UPLOAD_WHATS_NEW
+#   STORE_SYNC_REVENUECAT     IAP/subscription catalog probe
+#
+# ASC secrets (add later when enabling gates — not required for GitHub Release):
+#   APP_STORE_CONNECT_API_KEY_ID
+#   APP_STORE_CONNECT_ISSUER_ID
+#   APP_STORE_CONNECT_API_KEY_P8
+#
+# Published as a normal GitHub release immediately (Apoorv's preference — store
+# review lag doesn't gate the GitHub entry). Live App Store submit stays OFF.
 
 name: iOS Release (GitHub entry)
 
@@ -36,6 +44,23 @@ jobs:
       - name: Prepare reviewed release notes
         run: python3 scripts/release_notes.py "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
 
+      - name: Print store gates + validate IAP catalog
+        env:
+          STORE_UPLOAD_WHATS_NEW: ${{ vars.STORE_UPLOAD_WHATS_NEW }}
+          STORE_UPLOAD_LISTING: ${{ vars.STORE_UPLOAD_LISTING }}
+          STORE_UPLOAD_SCREENSHOTS: ${{ vars.STORE_UPLOAD_SCREENSHOTS }}
+          STORE_PRODUCTION_ROLLOUT: ${{ vars.STORE_PRODUCTION_ROLLOUT }}
+          STORE_SUBMIT_IOS_REVIEW: ${{ vars.STORE_SUBMIT_IOS_REVIEW }}
+          STORE_SYNC_REVENUECAT: ${{ vars.STORE_SYNC_REVENUECAT }}
+        run: |
+          python3 scripts/store/print_gates.py
+          python3 scripts/store/validate_catalog.py
+
+      - name: Prepare What's New + listing text (local only)
+        run: |
+          python3 scripts/store/prepare_whats_new.py --tag "$GITHUB_REF_NAME" --out "$RUNNER_TEMP/store-meta"
+          python3 scripts/store/prepare_listing_text.py --out "$RUNNER_TEMP/store-meta"
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -45,3 +70,35 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --title "iOS ${VERSION} (build ${BUILD})" \
             --notes-file "$RUNNER_TEMP/release-notes.md" --latest
+
+      - name: App Store Connect metadata / submit (gated — skipped unless enabled)
+        env:
+          STORE_SUBMIT_IOS_REVIEW: ${{ vars.STORE_SUBMIT_IOS_REVIEW }}
+          STORE_UPLOAD_LISTING: ${{ vars.STORE_UPLOAD_LISTING }}
+          STORE_UPLOAD_SCREENSHOTS: ${{ vars.STORE_UPLOAD_SCREENSHOTS }}
+          STORE_UPLOAD_WHATS_NEW: ${{ vars.STORE_UPLOAD_WHATS_NEW }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+        run: |
+          on() {
+            case "$(echo "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+              1|true|yes|on) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+          if on "$STORE_SUBMIT_IOS_REVIEW" || on "$STORE_UPLOAD_LISTING" \
+            || on "$STORE_UPLOAD_SCREENSHOTS" || on "$STORE_UPLOAD_WHATS_NEW"; then
+            echo "error: iOS ASC auto metadata/submit is scaffolded but not wired yet."
+            echo "Keep STORE_SUBMIT_IOS_REVIEW / STORE_UPLOAD_* false until ASC API steps are implemented."
+            echo "Prepared files: $RUNNER_TEMP/store-meta"
+            echo "Required secrets when enabling: APP_STORE_CONNECT_API_KEY_ID, ISSUER_ID, API_KEY_P8"
+            exit 1
+          fi
+          echo "ASC metadata/submit skipped (gates off) — setup only; Xcode Cloud still owns the IPA upload"
+
+      - name: RevenueCat catalog sync (gated dry-run)
+        env:
+          STORE_SYNC_REVENUECAT: ${{ vars.STORE_SYNC_REVENUECAT }}
+          REVENUECAT_SECRET_API_KEY: ${{ secrets.REVENUECAT_SECRET_API_KEY }}
+        run: python3 scripts/store/sync_revenuecat_catalog.py

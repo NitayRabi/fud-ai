@@ -3,8 +3,13 @@
 # Trigger:  push a tag starting with "android-v" (e.g. android-v3.0). iOS uses
 #           plain v* tags for Xcode Cloud, so the two pipelines never collide.
 # Output:   a signed AAB uploaded to the Play Console PRODUCTION track as a
-#           DRAFT release — nothing goes live until you press "Roll out" in the
-#           Console (where you also paste the release notes from PLAYSTORE.md).
+#           DRAFT release by default — nothing goes live until you press
+#           "Roll out" (or flip STORE_PRODUCTION_ROLLOUT — see store/README.md).
+#
+# Future-proof gates (repo Variables; all default OFF — see store/gates.env.example):
+#   STORE_UPLOAD_WHATS_NEW / STORE_UPLOAD_LISTING / STORE_UPLOAD_SCREENSHOTS
+#   STORE_PRODUCTION_ROLLOUT  (completed instead of draft — do NOT enable yet)
+#   STORE_SYNC_REVENUECAT     (IAP catalog probe; write path not enabled)
 #
 # Required repository secrets (Settings → Secrets and variables → Actions):
 #   ANDROID_KEYSTORE_BASE64     base64 of fudai-release.jks (the upload key)
@@ -62,6 +67,23 @@ jobs:
       - name: Prepare reviewed release notes
         run: python3 scripts/release_notes.py "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
 
+      - name: Print store gates + validate IAP catalog
+        env:
+          STORE_UPLOAD_WHATS_NEW: ${{ vars.STORE_UPLOAD_WHATS_NEW }}
+          STORE_UPLOAD_LISTING: ${{ vars.STORE_UPLOAD_LISTING }}
+          STORE_UPLOAD_SCREENSHOTS: ${{ vars.STORE_UPLOAD_SCREENSHOTS }}
+          STORE_PRODUCTION_ROLLOUT: ${{ vars.STORE_PRODUCTION_ROLLOUT }}
+          STORE_SUBMIT_IOS_REVIEW: ${{ vars.STORE_SUBMIT_IOS_REVIEW }}
+          STORE_SYNC_REVENUECAT: ${{ vars.STORE_SYNC_REVENUECAT }}
+        run: |
+          python3 scripts/store/print_gates.py
+          python3 scripts/store/validate_catalog.py
+
+      - name: Prepare What's New + listing text (local only)
+        run: |
+          python3 scripts/store/prepare_whats_new.py --tag "$GITHUB_REF_NAME" --out "$RUNNER_TEMP/store-meta"
+          python3 scripts/store/prepare_listing_text.py --out "$RUNNER_TEMP/store-meta"
+
       - name: Materialize upload keystore
         working-directory: android
         run: |
@@ -110,14 +132,64 @@ jobs:
             ${{ runner.temp }}/dist/*.aab
             ${{ runner.temp }}/dist/*.apk
 
-      - name: Upload to Play Console (production, draft)
+      # Default: draft. STORE_PRODUCTION_ROLLOUT=true is required for completed.
+      - name: Resolve Play upload status
+        id: play_status
+        env:
+          STORE_PRODUCTION_ROLLOUT: ${{ vars.STORE_PRODUCTION_ROLLOUT }}
+        run: |
+          case "$(echo "${STORE_PRODUCTION_ROLLOUT:-}" | tr '[:upper:]' '[:lower:]')" in
+            1|true|yes|on)
+              echo "status=completed" >> "$GITHUB_OUTPUT"
+              echo "WARNING: STORE_PRODUCTION_ROLLOUT is on — Play will go beyond draft"
+              ;;
+            *)
+              echo "status=draft" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Upload to Play Console (production track, draft/default)
+        if: ${{ vars.STORE_UPLOAD_WHATS_NEW != 'true' }}
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.apoorvdarshan.calorietracker
           releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
           track: production
-          status: draft
+          status: ${{ steps.play_status.outputs.status }}
+
+      - name: Upload to Play Console (with What's New)
+        if: ${{ vars.STORE_UPLOAD_WHATS_NEW == 'true' }}
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.apoorvdarshan.calorietracker
+          releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
+          track: production
+          status: ${{ steps.play_status.outputs.status }}
+          whatsNewDirectory: ${{ runner.temp }}/store-meta/play
+
+      - name: Listing / screenshots upload (gated — skipped unless enabled)
+        env:
+          STORE_UPLOAD_LISTING: ${{ vars.STORE_UPLOAD_LISTING }}
+          STORE_UPLOAD_SCREENSHOTS: ${{ vars.STORE_UPLOAD_SCREENSHOTS }}
+        run: |
+          listing="$(echo "${STORE_UPLOAD_LISTING:-}" | tr '[:upper:]' '[:lower:]')"
+          shots="$(echo "${STORE_UPLOAD_SCREENSHOTS:-}" | tr '[:upper:]' '[:lower:]')"
+          if [ "$listing" = "true" ] || [ "$listing" = "1" ] || [ "$listing" = "yes" ] || [ "$listing" = "on" ] \
+            || [ "$shots" = "true" ] || [ "$shots" = "1" ] || [ "$shots" = "yes" ] || [ "$shots" = "on" ]; then
+            echo "error: listing/screenshot auto-upload is scaffolded but not wired to a publisher action yet."
+            echo "Keep STORE_UPLOAD_LISTING / STORE_UPLOAD_SCREENSHOTS false until that step is implemented."
+            echo "Prepared files are under $RUNNER_TEMP/store-meta (and store/metadata/ locally)."
+            exit 1
+          fi
+          echo "listing/screenshot upload skipped (gates off) — setup only"
+
+      - name: RevenueCat catalog sync (gated dry-run)
+        env:
+          STORE_SYNC_REVENUECAT: ${{ vars.STORE_SYNC_REVENUECAT }}
+          REVENUECAT_SECRET_API_KEY: ${{ secrets.REVENUECAT_SECRET_API_KEY }}
+        run: python3 scripts/store/sync_revenuecat_catalog.py
 
       - name: Create GitHub Release
         env:

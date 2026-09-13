@@ -1,0 +1,71 @@
+# Store automation dry-run — validates catalog + prepares metadata.
+# Never uploads to App Store / Play / RevenueCat. Safe to run anytime.
+#
+# Live paths stay behind repository variables documented in store/README.md
+# and store/gates.env.example (all default OFF).
+
+name: Store automation (dry-run)
+
+on:
+  push:
+    paths:
+      - "store/**"
+      - "scripts/store/**"
+      - "APPSTORE.md"
+      - "PLAYSTORE.md"
+      - "docs/HOSTED_AI_REVENUECAT.md"
+      - ".github/workflows/store-automation.yml"
+  pull_request:
+    paths:
+      - "store/**"
+      - "scripts/store/**"
+      - "APPSTORE.md"
+      - "PLAYSTORE.md"
+      - "docs/HOSTED_AI_REVENUECAT.md"
+      - ".github/workflows/store-automation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Print gates (must stay safe by default)
+        env:
+          STORE_UPLOAD_WHATS_NEW: ${{ vars.STORE_UPLOAD_WHATS_NEW }}
+          STORE_UPLOAD_LISTING: ${{ vars.STORE_UPLOAD_LISTING }}
+          STORE_UPLOAD_SCREENSHOTS: ${{ vars.STORE_UPLOAD_SCREENSHOTS }}
+          STORE_PRODUCTION_ROLLOUT: ${{ vars.STORE_PRODUCTION_ROLLOUT }}
+          STORE_SUBMIT_IOS_REVIEW: ${{ vars.STORE_SUBMIT_IOS_REVIEW }}
+          STORE_SYNC_REVENUECAT: ${{ vars.STORE_SYNC_REVENUECAT }}
+        run: python3 scripts/store/print_gates.py
+
+      - name: Validate IAP / subscription / tip catalog
+        run: python3 scripts/store/validate_catalog.py
+
+      - name: Prepare What's New (dry-run)
+        run: python3 scripts/store/prepare_whats_new.py --tag dry-run --out "$RUNNER_TEMP/whatsnew"
+
+      - name: Prepare listing text (dry-run)
+        run: python3 scripts/store/prepare_listing_text.py --out "$RUNNER_TEMP/listing"
+
+      - name: RevenueCat catalog dry-run
+        env:
+          STORE_SYNC_REVENUECAT: "false"
+        run: python3 scripts/store/sync_revenuecat_catalog.py
+
+      - name: Upload prepared artifacts (inspection only)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: store-metadata-dry-run
+          path: |
+            ${{ runner.temp }}/whatsnew
+            ${{ runner.temp }}/listing
+          if-no-files-found: error

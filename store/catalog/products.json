@@ -1,0 +1,103 @@
+{
+  "$schema_comment": "Canonical IAP / subscription / tip / credit product IDs for Fud AI. Setup only — stores are not mutated from CI until STORE_SYNC_* gates are enabled.",
+  "package": {
+    "ios": "com.apoorvdarshan.calorietracker",
+    "android": "com.apoorvdarshan.calorietracker"
+  },
+  "platforms": {
+    "ios": {
+      "billing": "app_store",
+      "status": "active",
+      "notes": "Plus/Pro + credits + tip jar via RevenueCat + App Store."
+    },
+    "android": {
+      "billing": "play_billing",
+      "status": "planned",
+      "notes": "Hosted plans not shipped yet; IDs reserved for parity when Android billing ships."
+    }
+  },
+  "subscriptions": [
+    {
+      "id": "com.apoorvdarshan.calorietracker.plus.monthly",
+      "plan": "plus",
+      "period": "P1M",
+      "suggested_price_usd": "8.99",
+      "entitlement": "plus",
+      "platforms": ["ios", "android"]
+    },
+    {
+      "id": "com.apoorvdarshan.calorietracker.plus.yearly",
+      "plan": "plus",
+      "period": "P1Y",
+      "suggested_price_usd": "69.99",
+      "entitlement": "plus",
+      "platforms": ["ios", "android"]
+    },
+    {
+      "id": "com.apoorvdarshan.calorietracker.pro.monthly",
+      "plan": "pro",
+      "period": "P1M",
+      "suggested_price_usd": "17.99",
+      "entitlement": "pro",
+      "platforms": ["ios", "android"]
+    },
+    {
+      "id": "com.apoorvdarshan.calorietracker.pro.yearly",
+      "plan": "pro",
+      "period": "P1Y",
+      "suggested_price_usd": "149.99",
+      "entitlement": "pro",
+      "platforms": ["ios", "android"]
+    }
+  ],
+  "consumables": [
+    {
+      "id": "com.apoorvdarshan.calorietracker.credits.50",
+      "kind": "credits",
+      "credits": 50,
+      "suggested_price_usd": "1.99",
+      "platforms": ["ios", "android"]
+    },
+    {
+      "id": "com.apoorvdarshan.calorietracker.credits.150",
+      "kind": "credits",
+      "credits": 150,
+      "suggested_price_usd": "4.99",
+      "platforms": ["ios", "android"]
+    },
+    {
+      "id": "com.apoorvdarshan.calorietracker.credits.400",
+      "kind": "credits",
+      "credits": 400,
+      "suggested_price_usd": "9.99",
+      "platforms": ["ios", "android"]
+    }
+  ],
+  "tips": [
+    {
+      "id": "com.apoorvdarshan.calorietracker.tip.snack",
+      "tier": "snack",
+      "suggested_price_usd": "0.99",
+      "platforms": ["ios"],
+      "android_note": "Android tips remain Ko-fi until Play tip products ship."
+    },
+    {
+      "id": "com.apoorvdarshan.calorietracker.tip.proteinshake",
+      "tier": "proteinshake",
+      "suggested_price_usd": "2.99",
+      "platforms": ["ios"]
+    },
+    {
+      "id": "com.apoorvdarshan.calorietracker.tip.lunch",
+      "tier": "lunch",
+      "suggested_price_usd": "4.99",
+      "platforms": ["ios"]
+    },
+    {
+      "id": "com.apoorvdarshan.calorietracker.tip.feast",
+      "tier": "feast",
+      "suggested_price_usd": "9.99",
+      "platforms": ["ios"]
+    }
+  ]
+}
