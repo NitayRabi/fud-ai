@@ -176,14 +176,23 @@ class ExerciseVisualResolverTest {
     }
 
     @Test
-    fun releaseBuildsNeverMergeTheFrameCorpusIntoAssets() {
+    fun releaseBuildsBundleTheCompleteFrameCorpusWithoutACdn() {
         val gradleFile = File(repositoryRoot(), "android/app/build.gradle.kts")
         val script = gradleFile.readText()
         assertTrue(
-            "shared/workout-vectors must not be an assets.srcDir; frames ship via WorkoutFrameStore",
+            "shared/workout-vectors must be packaged through the filtered asset task, not as a raw assets.srcDir",
             !script.contains("\"../../shared/workout-vectors\"")
         )
-        assertTrue(script.contains("isRelease -> \"none\""))
+        assertTrue("every variant must default to the whole corpus", script.contains("requested == null -> \"all\""))
+        assertTrue(
+            "release packaging must refuse anything but the whole corpus",
+            script.contains("if (release.get() && requested != null && requested != \"all\")") &&
+                script.contains("store binaries must bundle the complete workout frame corpus")
+        )
+        assertTrue(
+            "release must not depend on a workout-frame CDN",
+            script.contains("val workoutVectorsDefaultBaseUrl = \"\"") && !script.contains("assets.fud-ai.app")
+        )
     }
 
     private fun assertSvgVisual(
