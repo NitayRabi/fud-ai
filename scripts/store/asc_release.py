@@ -22,9 +22,9 @@ EDITABLE_VERSION_STATES = {
     "DEVELOPER_REJECTED",
     "REJECTED",
     "METADATA_REJECTED",
-    "WAITING_FOR_REVIEW",
     "INVALID_BINARY",
 }
+SUBMITTABLE_VERSION_STATES = EDITABLE_VERSION_STATES
 
 
 def fail(msg: str) -> None:
@@ -98,8 +98,12 @@ class AscClient:
         assert result is not None
         return result
 
-    def put_bytes(self, url: str, data: bytes, headers: dict[str, str]) -> None:
-        req = urllib.request.Request(url, data=data, method="PUT", headers=headers)
+    def upload_bytes(
+        self, url: str, data: bytes, headers: dict[str, str], *, method: str = "PUT"
+    ) -> None:
+        req = urllib.request.Request(
+            url, data=data, method=method.upper(), headers=headers
+        )
         try:
             with urllib.request.urlopen(req, timeout=300):
                 return
@@ -144,16 +148,30 @@ def find_app(client: AscClient, bundle_id: str) -> str:
     return data[0]["id"]
 
 
-def get_editable_version(client: AscClient, app_id: str) -> dict[str, Any]:
-    query = urllib.parse.urlencode({"filter[app]": app_id, "limit": "20"})
-    payload = client.get(f"/appStoreVersions?{query}")
-    for item in payload.get("data") or []:
-        state = (item.get("attributes") or {}).get("appStoreState") or ""
-        if state in EDITABLE_VERSION_STATES:
-            return item
-    fail(
-        "no editable App Store version found (expected PREPARE_FOR_SUBMISSION or similar)"
+def get_ios_app_store_version(
+    client: AscClient, app_id: str, version_string: str
+) -> dict[str, Any]:
+    query = urllib.parse.urlencode(
+        {
+            "filter[app]": app_id,
+            "filter[platform]": "IOS",
+            "filter[versionString]": version_string,
+            "limit": "5",
+        }
     )
+    payload = client.get(f"/appStoreVersions?{query}")
+    data = payload.get("data") or []
+    if not data:
+        fail(
+            f"no IOS App Store version {version_string!r} for app {app_id} "
+            "(create the version in App Store Connect first)"
+        )
+    if len(data) > 1:
+        fail(
+            f"ambiguous App Store versions for {version_string!r} on IOS — "
+            f"got {len(data)} records"
+        )
+    return data[0]
 
 
 def localization_for_locale(
@@ -196,6 +214,9 @@ def upload_listing(
         info_attrs["name"] = name
     if subtitle:
         info_attrs["subtitle"] = subtitle
+    privacy = read_text(loc_dir / "privacy_url.txt")
+    if privacy:
+        info_attrs["privacyPolicyUrl"] = privacy
     if info_attrs:
         client.patch(
             f"/appInfoLocalizations/{info_loc['id']}",
@@ -273,10 +294,14 @@ def ensure_screenshot_set(
     return created["data"]
 
 
-def delete_existing_screenshots(client: AscClient, screenshot_set_id: str) -> None:
+def list_screenshot_ids(client: AscClient, screenshot_set_id: str) -> list[str]:
     payload = client.get(f"/appScreenshotSets/{screenshot_set_id}/appScreenshots")
-    for shot in payload.get("data") or []:
-        client.request("DELETE", f"/appScreenshots/{shot['id']}")
+    return [shot["id"] for shot in payload.get("data") or []]
+
+
+def delete_screenshots(client: AscClient, screenshot_ids: list[str]) -> None:
+    for shot_id in screenshot_ids:
+        client.request("DELETE", f"/appScreenshots/{shot_id}")
 
 
 def upload_screenshot_file(
@@ -305,13 +330,13 @@ def upload_screenshot_file(
     upload_ops = (shot.get("attributes") or {}).get("uploadOperations") or []
     if not upload_ops:
         fail(f"ASC returned no uploadOperations for {image_path.name}")
-    offset = 0
     for op in upload_ops:
+        offset = int(op.get("offset", 0))
         length = int(op["length"])
         chunk = raw[offset : offset + length]
         headers = {h["name"]: h["value"] for h in op.get("requestHeaders") or []}
-        client.put_bytes(op["url"], chunk, headers)
-        offset += length
+        method = (op.get("method") or "PUT").upper()
+        client.upload_bytes(op["url"], chunk, headers, method=method)
     client.patch(
         f"/appScreenshots/{shot_id}",
         {
@@ -341,9 +366,12 @@ def upload_screenshots(
         fail(f"no PNG screenshots in {screenshots_dir}")
 
     shot_set = ensure_screenshot_set(client, version_loc_id, IPHONE_67_DISPLAY)
-    delete_existing_screenshots(client, shot_set["id"])
+    old_ids = list_screenshot_ids(client, shot_set["id"])
     for path in pngs:
         upload_screenshot_file(client, shot_set["id"], path)
+    if old_ids:
+        delete_screenshots(client, old_ids)
+        print(f"  removed {len(old_ids)} previous ASC screenshot(s)")
 
 
 def submit_for_review(client: AscClient, app_id: str, version_id: str) -> None:
@@ -414,6 +442,10 @@ def main() -> None:
     parser.add_argument("--locale", default="en-US")
     parser.add_argument("--bundle-id", default=DEFAULT_BUNDLE_ID)
     parser.add_argument(
+        "--version",
+        help="Marketing version from release tag (e.g. 1.2.3 when tag is v1.2.3)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Validate flags and local files only — no ASC HTTP calls",
@@ -425,7 +457,10 @@ def main() -> None:
     do_submit = truthy("SUBMIT_IOS_REVIEW")
 
     if not (do_listing or do_screenshots or do_submit):
-        print("ASC release skipped — UPLOAD_LISTING / UPLOAD_SCREENSHOTS / SUBMIT_IOS_REVIEW are off")
+        print(
+            "ASC release skipped — UPLOAD_LISTING / UPLOAD_SCREENSHOTS / "
+            "SUBMIT_IOS_REVIEW are off"
+        )
         return
 
     validate_local_inputs(
@@ -448,11 +483,42 @@ def main() -> None:
     token = make_asc_token(key_id, issuer_id, key_p8)
     client = AscClient(token)
 
+    if not args.version:
+        fail("--version is required for live ASC calls (pass marketing version from tag)")
+
     app_id = find_app(client, args.bundle_id)
-    version = get_editable_version(client, app_id)
+    version = get_ios_app_store_version(client, app_id, args.version)
     version_id = version["id"]
-    state = (version.get("attributes") or {}).get("appStoreState")
-    print(f"ASC app={app_id} version={version_id} state={state}")
+    state = (version.get("attributes") or {}).get("appStoreState") or ""
+    print(
+        f"ASC app={app_id} version={args.version} id={version_id} state={state}"
+    )
+
+    if state == "WAITING_FOR_REVIEW":
+        if do_submit and not (do_listing or do_screenshots):
+            print(
+                "ASC submit skipped — version already WAITING_FOR_REVIEW (idempotent)"
+            )
+            print("ASC release step finished")
+            return
+        if do_listing or do_screenshots:
+            fail(
+                f"cannot update listing/screenshots while version {args.version!r} "
+                "is WAITING_FOR_REVIEW"
+            )
+        do_submit = False
+
+    if do_listing or do_screenshots:
+        if state not in EDITABLE_VERSION_STATES:
+            fail(
+                f"version {args.version!r} is not editable for metadata (state={state}); "
+                f"expected one of: {', '.join(sorted(EDITABLE_VERSION_STATES))}"
+            )
+
+    if do_submit and state not in SUBMITTABLE_VERSION_STATES:
+        fail(
+            f"version {args.version!r} cannot be submitted for review (state={state})"
+        )
 
     if do_listing:
         print("uploading ASC listing metadata…")
