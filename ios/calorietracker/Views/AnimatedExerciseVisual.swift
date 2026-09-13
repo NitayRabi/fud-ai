@@ -122,8 +122,8 @@ private struct ExerciseImageView: View {
     let asset: ExerciseVisualAsset
     let animatesFrames: Bool
     let maxPixelSize: Int?
-    /// Shown when no frame could be produced (a frame genuinely missing from the bundled
-    /// corpus).
+    /// Shown while no frame could be produced (authored frames are fetched on demand and
+    /// may be unavailable offline before their first download).
     let placeholder: AnyView
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var frameIndex = 0
@@ -261,7 +261,7 @@ nonisolated private final class ExerciseImageCache: @unchecked Sendable {
         case .file(let url):
             image = Self.decodeImage(fromFileURL: url, maxPixelSize: maxPixelSize)
         case .authored(let authored):
-            // Cache → bundled workout-vectors folder → optional debug download; nil keeps the placeholder.
+            // Cache → bundled debug sample → CDN download; nil keeps the placeholder visible.
             guard let url = await WorkoutFrameStore.shared.localURL(for: authored) else { return nil }
             image = Self.decodeImage(fromFileURL: url, maxPixelSize: maxPixelSize)
         }

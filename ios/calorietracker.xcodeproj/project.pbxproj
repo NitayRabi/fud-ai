@@ -615,7 +615,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Bundles only the runtime corpus (manifest + *_v2_*.png) from shared/workout-vectors.\n/bin/sh \"${SRCROOT}/scripts/copy_workout_frames.sh\"\n";
+			shellScript = "# Debug: bundle the workout-frame sample pack. Release: bundle no frames and fail if any leaked (frames come from the CDN).\n/bin/sh \"${SRCROOT}/scripts/copy_workout_frames.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */

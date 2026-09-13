@@ -2,29 +2,32 @@ import CryptoKit
 import Foundation
 import os
 
-/// Delivers authored workout frames. The complete corpus ships inside the app bundle
-/// (`calorietracker.app/workout-vectors/<name>.png`, copied from `shared/workout-vectors`
-/// by the "Copy Workout Frames" build phase), so every frame is available offline with no CDN.
+/// Delivers authored workout frames without shipping the 1.2 GB corpus inside the IPA.
 ///
 /// Resolution order for a frame:
-/// 1. on-device cache (`Caches/WorkoutVectors/v2/<name>.<digest>.png`; only populated by
-///    step 3, so it stays empty in release builds) — served only after the file verifies
-///    against the manifest (size, PNG signature, digest); anything else is deleted,
-/// 2. the bundled `workout-vectors` folder — the normal path for every build,
-/// 3. optional download (`<base>/<name>.png?v=<digest>`), verified against the manifest
-///    digest and stored in the cache. There is no default base URL; this step is
-///    disabled unless a Debug run passes the `-WorkoutVectorsBaseURL` launch argument.
+/// 1. on-device cache (`Caches/WorkoutVectors/v2/<name>.<digest>.png`) — served only after
+///    the file verifies against the manifest (size, PNG signature, digest); anything else
+///    is deleted so a torn write can never pin the UI to its placeholder,
+/// 2. the bundled `workout-vectors` folder: Debug builds carry the small sample pack
+///    (`ios/scripts/copy_workout_frames.sh`); release builds bundle no frames at all,
+/// 3. download from the workout-vector CDN (`<base>/<name>.png?v=<digest>`), size-capped,
+///    verified against the manifest digest, written atomically and stored in the cache.
 ///
-/// A frame that is genuinely missing from the corpus resolves to nil and the UI keeps
-/// its placeholder. Failures are remembered briefly so a missing frame is not retried on
-/// every animation tick.
+/// Anything that fails resolves to nil and the UI keeps its placeholder, which is the
+/// behaviour the app had before authored frames existed. Failures are remembered briefly
+/// so an offline user does not retry every frame on every animation tick, and the cache is
+/// trimmed back to ~192 MB once it passes 256 MB.
 actor WorkoutFrameStore {
     nonisolated static let shared = WorkoutFrameStore()
 
-    /// Debug-only download override, e.g. launch argument `-WorkoutVectorsBaseURL http://localhost:8765`
-    /// while `python3 -m http.server -d shared/workout-vectors 8765` serves the corpus.
+    /// Public CDN prefix (R2 bucket `fud-ai-assets` behind a custom domain; see
+    /// shared/workout-vectors/README.md). Store builds always use this.
+    nonisolated static let defaultBaseURL = URL(string: "https://assets.fud-ai.app/workout-vectors/v2")!
+    /// Debug-only override, e.g. launch argument `-WorkoutVectorsBaseURL http://localhost:8765`
+    /// while `python3 -m http.server -d shared/workout-vectors 8765` serves the corpus;
+    /// `-WorkoutVectorsBaseURL none` disables downloads to test offline behaviour.
     nonisolated static let baseURLOverrideKey = "WorkoutVectorsBaseURL"
-    /// Bundle subdirectory the "Copy Workout Frames" build phase copies the corpus to.
+    /// Bundle subdirectory the "Copy Workout Frames" build phase copies the Debug sample pack to.
     nonisolated static let bundledFrameDirectory = "workout-vectors"
 
     nonisolated private static let failureRetryInterval: TimeInterval = 60
@@ -56,19 +59,18 @@ actor WorkoutFrameStore {
 
     // MARK: - Configuration
 
-    /// Nil (downloads disabled) except for a Debug launch-argument override.
+    /// The production CDN, unless a Debug launch argument overrides it (`none` disables downloads).
     nonisolated static func configuredBaseURL() -> URL? {
         #if DEBUG
         if
             let override = UserDefaults.standard.string(forKey: baseURLOverrideKey)?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
-            !override.isEmpty,
-            override.lowercased() != "none"
+            !override.isEmpty
         {
-            return URL(string: override)
+            return override.lowercased() == "none" ? nil : URL(string: override)
         }
         #endif
-        return nil
+        return defaultBaseURL
     }
 
     nonisolated static func defaultCacheDirectory() -> URL {
@@ -132,9 +134,10 @@ actor WorkoutFrameStore {
         cacheDirectory.appendingPathComponent(Self.cacheFileName(for: frame), isDirectory: false)
     }
 
-    /// The frame inside the app bundle. Bundled frames are trusted as-is: the bundle is
-    /// code-signed and the build phase copies the canonical corpus byte-for-byte, so
-    /// the manifest digest is only re-checked for cached/downloaded files.
+    /// The frame inside the app bundle (Debug sample pack only; release bundles none).
+    /// Bundled frames are trusted as-is: the bundle is code-signed and the build phase
+    /// copies the canonical corpus byte-for-byte, so the manifest digest is only
+    /// re-checked for cached/downloaded files.
     nonisolated static func bundledURL(for frame: ExerciseAuthoredFrame, in bundle: Bundle = .main) -> URL? {
         bundle.url(
             forResource: frame.name,
@@ -144,15 +147,14 @@ actor WorkoutFrameStore {
     }
 
     /// Frame file that can be shown without touching the network, if any: a verified cache
-    /// entry first, otherwise the bundled frame.
+    /// entry first, otherwise a bundled (Debug sample) frame.
     func offlineURL(for frame: ExerciseAuthoredFrame) -> URL? {
         verifiedCachedURL(for: frame) ?? Self.bundledURL(for: frame)
     }
 
     /// The cached frame only if its bytes verify against the manifest. A corrupt or stale
-    /// entry (a torn write, a leftover from an earlier download-based release, a file the
-    /// system half-purged) is deleted so it can never mask the valid bundled frame and pin
-    /// the UI to its placeholder.
+    /// entry (a torn write, a file the system half-purged) is deleted so the next request
+    /// re-downloads it instead of failing to decode forever.
     private func verifiedCachedURL(for frame: ExerciseAuthoredFrame) -> URL? {
         let cached = cacheFileURL(for: frame)
         let name = cached.lastPathComponent
@@ -177,7 +179,7 @@ actor WorkoutFrameStore {
         return nil
     }
 
-    /// Local file URL for `frame` (cache → bundle → optional debug download). Nil when unavailable.
+    /// Local file URL for `frame` (cache → bundled debug sample → CDN download). Nil when unavailable.
     func localURL(for frame: ExerciseAuthoredFrame) async -> URL? {
         if let url = offlineURL(for: frame) {
             return url
@@ -196,7 +198,7 @@ actor WorkoutFrameStore {
         return result
     }
 
-    /// Deletes every cached frame. The bundle keeps serving, so this loses nothing.
+    /// Deletes every cached frame. Frames are re-downloadable, so this loses nothing.
     func clearCache() {
         verifiedCacheFiles.removeAll()
         try? FileManager.default.removeItem(at: cacheDirectory)
