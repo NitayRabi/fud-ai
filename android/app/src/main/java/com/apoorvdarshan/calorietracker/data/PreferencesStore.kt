@@ -1329,7 +1329,7 @@ class PreferencesStore(
         val ADAPTIVE_GOALS_ENABLED = booleanPreferencesKey("adaptiveGoalsEnabled")
         val REVIEW_PROMPTED_AFTER_FIRST_LOG = booleanPreferencesKey("reviewPromptedAfterFirstLog")
         val HAS_SEEN_HOSTED_UPSELL_PROMPT = booleanPreferencesKey("hasSeenHostedUpsellPrompt")
-        val HAS_SEEN_MEET_DEVELOPER_PROMPT = booleanPreferencesKey("hasSeenMeetDeveloperPrompt")
+        val HAS_SEEN_MEET_DEVELOPER_PROMPT = booleanPreferencesKey("hasCompletedMeetDeveloperPrompt")
         val PRODUCT_HUNT_LAUNCH_NOTIFICATION_SCHEDULED = booleanPreferencesKey("productHuntLaunchNotificationScheduled")
         val ADAPTIVE_GOALS_PREVIOUS_TARGETS = stringPreferencesKey("adaptiveGoalsPreviousTargets")
         val ADAPTIVE_GOALS_LAST_CHECK_DAY = stringPreferencesKey("adaptiveGoalsLastCheckDay")

@@ -151,8 +151,21 @@ struct ContentView: View {
             .sheet(isPresented: $showHostedUpsellPaywall, onDismiss: { continueToMeetDeveloperPrompt() }) {
                 HostedPaywallView()
             }
-            .sheet(isPresented: $showMeetDeveloperPrompt, onDismiss: { scheduleProductHuntLaunchReminder() }) {
-                MeetDeveloperSheet()
+            .sheet(isPresented: $showMeetDeveloperPrompt, onDismiss: {
+                // Done marks the prompt seen before dismiss. Anything else (system
+                // tear-down after opening Instagram, etc.) must bring it back.
+                if PostUpdatePrompts.hasSeenMeetDeveloper {
+                    scheduleProductHuntLaunchReminder()
+                } else {
+                    DispatchQueue.main.async {
+                        showMeetDeveloperPrompt = true
+                    }
+                }
+            }) {
+                MeetDeveloperSheet {
+                    PostUpdatePrompts.hasSeenMeetDeveloper = true
+                    showMeetDeveloperPrompt = false
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: .quickActionRequested)) { _ in
                 consumePendingLaunchRoutes()
@@ -261,8 +274,8 @@ struct ContentView: View {
 
     /// Sequence: hosted upsell (if eligible) → meet the developer → arm the Product Hunt
     /// launch reminder. Never stacks two dialogs; each step advances from the previous one's
-    /// dismiss handler. Flags are written when a prompt is *shown* so a force-quit mid-prompt
-    /// can't replay it.
+    /// dismiss handler. Hosted upsell is marked seen when shown; meet-the-developer is marked
+    /// seen only on Done so opening Instagram/X and coming back keeps the sheet up.
     @MainActor
     private func runPostUpdatePromptsIfNeeded() async {
         // Let the first frame and any launch route (quick action / deep link) settle first.
@@ -301,7 +314,6 @@ struct ContentView: View {
         }
         Task { @MainActor in
             if delay > 0 { try? await Task.sleep(for: .seconds(delay)) }
-            PostUpdatePrompts.hasSeenMeetDeveloper = true
             showMeetDeveloperPrompt = true
         }
     }
