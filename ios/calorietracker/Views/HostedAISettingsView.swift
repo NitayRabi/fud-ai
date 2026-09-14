@@ -194,10 +194,11 @@ struct HostedPaywallCatalog {
 
 // MARK: - Paywall
 
-/// Conversion-minded Hosted AI paywall: hero → Plus/Pro plan cards with a
+/// Hosted AI paywall: Fud AI logo hero → Plus/Pro plan cards with a
 /// monthly/yearly toggle → pinned subscribe CTA, with credit packs demoted to a
-/// secondary section. Purchase/restore plumbing is unchanged from the original
-/// List-based sheet; only the presentation differs.
+/// secondary section. Styled like the rest of the app (app card / accent
+/// colour, rounded fonts, minimal chrome). Purchase/restore plumbing is
+/// unchanged from the original List-based sheet; only the presentation differs.
 struct HostedPaywallView: View {
     private static let plans: [HostedPlan] = [.plus, .pro]
     private static let termsURL = URL(string: "https://fud-ai.app/terms.html")!
@@ -219,7 +220,7 @@ struct HostedPaywallView: View {
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 28) {
+                VStack(spacing: 24) {
                     hero
                     plansSection
                     if catalog.hasSubscriptions {
@@ -230,8 +231,8 @@ struct HostedPaywallView: View {
                     }
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .padding(.bottom, 16)
+                .padding(.top, 4)
+                .padding(.bottom, 12)
             }
             .background(AppColors.appBackground.ignoresSafeArea())
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -287,53 +288,41 @@ struct HostedPaywallView: View {
 
     // MARK: Hero
 
+    /// Same logo treatment as About / Meet the developer: the real app mark,
+    /// a short title, one quiet line. No decorative tile, glow or badges.
     private var hero: some View {
-        VStack(spacing: 16) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: AppColors.calorieGradient,
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 76, height: 76)
-                    .shadow(color: AppColors.calorie.opacity(0.35), radius: 14, y: 8)
-                Image(systemName: "sparkles")
-                    .font(.system(size: 34, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-            .accessibilityHidden(true)
+        VStack(spacing: 12) {
+            Image("onboardingLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 60, height: 60)
+                .accessibilityHidden(true)
 
-            VStack(spacing: 8) {
+            VStack(spacing: 4) {
                 Text("Hosted AI")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
-                Text("Let Fud AI run the models for you. No API keys, no setup — and BYOK stays free forever.")
-                    .font(.system(.callout, design: .rounded))
+                    .font(.system(.title2, design: .rounded, weight: .bold))
+                Text("Fud AI runs the models. No API keys, no setup.")
+                    .font(.system(.subheadline, design: .rounded))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 8)
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 8)
+        .padding(.top, 4)
     }
 
     // MARK: Plans
 
     @ViewBuilder
     private var plansSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HostedSectionTitle("Choose your plan")
-
+        VStack(alignment: .leading, spacing: 10) {
             if catalog.hasSubscriptions {
                 if availablePeriods.count > 1 {
                     periodToggle
                 }
                 // Two explicit cards; deliberately not a ForEach over HostedPlan.
-                VStack(spacing: 10) {
+                VStack(spacing: 8) {
                     if let package = package(for: .plus) {
                         planCard(plan: .plus, package: package)
                     }
@@ -366,11 +355,8 @@ struct HostedPaywallView: View {
                 action: { select(period: .yearly) }
             )
         }
-        .padding(4)
+        .padding(3)
         .background(AppColors.appCard, in: Capsule())
-        .overlay {
-            Capsule().strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
-        }
         .disabled(isBusy)
     }
 
@@ -385,14 +371,8 @@ struct HostedPaywallView: View {
         let period = HostedBillingPeriod(package: package) ?? selectedPeriod
         let dailyLimit = HostedAIConstants.dailyLimit(for: plan)
 
-        let badge: String?
-        if rc.activePlan == plan {
-            badge = String(localized: "Current plan")
-        } else if plan == .pro {
-            badge = String(localized: "2× actions")
-        } else {
-            badge = nil
-        }
+        // Only a functional marker; no marketing badges on the cards.
+        let badge: String? = rc.activePlan == plan ? String(localized: "Current plan") : nil
 
         let priceDetail: String
         if let perMonth = monthlyEquivalent(for: product) {
@@ -417,26 +397,27 @@ struct HostedPaywallView: View {
     // MARK: Features
 
     private var featureList: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HostedSectionTitle("What's included")
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
                 HostedFeatureRow(
                     icon: "camera.viewfinder",
-                    title: String(localized: "Every AI feature, zero setup"),
-                    detail: String(localized: "Photo, voice and text logging, Coach, and workout AI — no provider account or API key.")
+                    title: String(localized: "Every AI feature"),
+                    detail: String(localized: "Photo, voice and text logging, Coach, and workout AI.")
                 )
                 HostedFeatureRow(
                     icon: "clock.arrow.circlepath",
-                    title: String(localized: "A fresh daily pool"),
-                    detail: String(localized: "Your allowance resets at midnight UTC. Credit packs cover the busy days.")
+                    title: String(localized: "Daily allowance"),
+                    detail: String(localized: "Resets at midnight UTC. Credit packs cover busy days.")
                 )
                 HostedFeatureRow(
-                    icon: "lock.shield.fill",
+                    icon: "lock.shield",
                     title: String(localized: "Only your request is sent"),
-                    detail: String(localized: "Each photo, voice note, or message you send is processed through Fud AI's hosted service. Your diary and history are stored on this device. Cancel anytime in the App Store.")
+                    detail: String(localized: "Your diary and history stay on this device. Cancel anytime in the App Store.")
                 )
             }
-            .padding(16)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
             .background(HostedCardBackground())
         }
     }
@@ -445,10 +426,10 @@ struct HostedPaywallView: View {
 
     private var creditPacksSection: some View {
         let catalog = self.catalog
-        return VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+        return VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
                 HostedSectionTitle("Credit packs")
-                Text("Top up when you run past your daily pool. Credits are one-time purchases and are spent only while a plan is active.")
+                Text("One-time top-ups, spent only while a plan is active.")
                     .font(.system(.footnote, design: .rounded))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -474,8 +455,10 @@ struct HostedPaywallView: View {
 
     // MARK: Purchase bar
 
+    /// Flat, single-colour CTA in the app accent (no gradient or drop shadow);
+    /// disclosure and legal links stay small and secondary.
     private var purchaseBar: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             Button {
                 if let package = selectedPackage {
                     Task { await purchase(package) }
@@ -491,13 +474,9 @@ struct HostedPaywallView: View {
                 .font(.system(.body, design: .rounded, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 54)
-                .background(
-                    LinearGradient(colors: AppColors.calorieGradient, startPoint: .leading, endPoint: .trailing),
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                )
-                .shadow(color: AppColors.calorie.opacity(0.3), radius: 8, y: 4)
-                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .frame(height: 52)
+                .background(AppColors.calorie, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             .buttonStyle(.plain)
             .disabled(selectedPackage == nil || isBusy)
@@ -512,7 +491,7 @@ struct HostedPaywallView: View {
                 .opacity(ctaDetail.isEmpty ? 0 : 1)
                 .accessibilityHidden(ctaDetail.isEmpty)
 
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Button {
                     Task { await restore() }
                 } label: {
@@ -530,13 +509,13 @@ struct HostedPaywallView: View {
                 Text("·")
                 Link("Privacy", destination: Self.privacyURL)
             }
-            .font(.system(.footnote, design: .rounded, weight: .medium))
+            .font(.system(.caption, design: .rounded, weight: .medium))
             .foregroundStyle(.secondary)
             .tint(.secondary)
         }
         .padding(.horizontal, 20)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
         .background(.bar)
     }
 
@@ -632,7 +611,7 @@ struct HostedPaywallView: View {
         guard let package = selectedPackage else { return "" }
         let product = package.storeProduct
         let period = HostedBillingPeriod(package: package) ?? selectedPeriod
-        return String(localized: "\(product.localizedTitle) · \(product.localizedPriceString) \(period.perUnit). Renews automatically, cancel anytime.")
+        return String(localized: "\(product.localizedPriceString) \(period.perUnit) · Renews automatically, cancel anytime.")
     }
 
     /// Yearly discount versus paying monthly for the selected plan, only when
@@ -710,9 +689,9 @@ struct HostedPaywallView: View {
 struct HostedCardBackground: View {
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(AppColors.appCard)
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
         }
     }
@@ -727,12 +706,13 @@ struct HostedSectionTitle: View {
 
     var body: some View {
         Text(title)
-            .font(.system(.headline, design: .rounded, weight: .semibold))
-            .foregroundStyle(.primary)
+            .font(.system(.subheadline, design: .rounded, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .padding(.leading, 4)
     }
 }
 
-/// One half of the monthly/yearly toggle. The savings pill is always part of
+/// One half of the monthly/yearly toggle. The savings text is always part of
 /// the tree and collapses to zero width when there is nothing to show, so the
 /// monthly and yearly buttons are the exact same type with the same layout.
 struct HostedPeriodButton: View {
@@ -745,25 +725,19 @@ struct HostedPeriodButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: hasSavings ? 6 : 0) {
+            HStack(spacing: hasSavings ? 5 : 0) {
                 Text(title)
                     .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(isSelected ? Color.white : Color.primary)
                 Text(savingsLabel ?? "")
-                    .font(.system(.caption2, design: .rounded, weight: .bold))
-                    .foregroundStyle(isSelected ? Color.white : AppColors.calorie)
-                    .padding(.horizontal, hasSavings ? 6 : 0)
-                    .padding(.vertical, 2)
-                    .background(
-                        isSelected ? Color.white.opacity(0.22) : AppColors.calorie.opacity(0.12),
-                        in: Capsule()
-                    )
+                    .font(.system(.caption2, design: .rounded, weight: .semibold))
+                    .foregroundStyle(isSelected ? Color.white.opacity(0.85) : AppColors.calorie)
                     .frame(width: hasSavings ? nil : 0)
                     .opacity(hasSavings ? 1 : 0)
                     .accessibilityHidden(!hasSavings)
             }
-            .foregroundStyle(isSelected ? Color.white : Color.primary)
             .frame(maxWidth: .infinity)
-            .frame(height: 38)
+            .frame(height: 36)
             .background(isSelected ? AppColors.calorie : Color.clear, in: Capsule())
             .contentShape(Capsule())
         }
@@ -772,8 +746,8 @@ struct HostedPeriodButton: View {
     }
 }
 
-/// Selectable Plus / Pro plan card. The badge ("Current plan" / "2× actions")
-/// is always in the tree and collapses when nil.
+/// Selectable Plus / Pro plan card. The badge ("Current plan") is always in
+/// the tree and collapses when nil.
 struct HostedPlanCard: View {
     let title: String
     let badge: String?
@@ -789,56 +763,50 @@ struct HostedPlanCard: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .center, spacing: 14) {
+            HStack(alignment: .center, spacing: 12) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(isSelected ? AppColors.calorie : Color.secondary.opacity(0.5))
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(isSelected ? AppColors.calorie : Color.secondary.opacity(0.4))
 
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: hasBadge ? 8 : 0) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: hasBadge ? 6 : 0) {
                         Text(title)
-                            .font(.system(.headline, design: .rounded, weight: .semibold))
+                            .font(.system(.body, design: .rounded, weight: .semibold))
                             .foregroundStyle(.primary)
                         Text(badge ?? "")
-                            .font(.system(.caption2, design: .rounded, weight: .bold))
+                            .font(.system(.caption2, design: .rounded, weight: .semibold))
                             .foregroundStyle(AppColors.calorie)
-                            .padding(.horizontal, hasBadge ? 8 : 0)
-                            .padding(.vertical, 3)
-                            .background(AppColors.calorie.opacity(0.12), in: Capsule())
                             .frame(width: hasBadge ? nil : 0)
                             .opacity(hasBadge ? 1 : 0)
                             .accessibilityHidden(!hasBadge)
                     }
                     Text(subtitle)
-                        .font(.system(.subheadline, design: .rounded))
+                        .font(.system(.footnote, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
 
                 Spacer(minLength: 8)
 
-                VStack(alignment: .trailing, spacing: 2) {
+                VStack(alignment: .trailing, spacing: 1) {
                     Text(price)
-                        .font(.system(.title3, design: .rounded, weight: .bold))
+                        .font(.system(.body, design: .rounded, weight: .semibold))
                         .foregroundStyle(.primary)
                     Text(priceDetail)
-                        .font(.system(.caption, design: .rounded))
+                        .font(.system(.caption2, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(16)
-            .background(
-                isSelected ? AppColors.calorie.opacity(0.06) : Color.clear,
-                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-            )
-            .background(AppColors.appCard, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 13)
+            .background(AppColors.appCard, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .strokeBorder(
                         isSelected ? AppColors.calorie : Color.primary.opacity(0.06),
-                        lineWidth: isSelected ? 2 : 1
+                        lineWidth: isSelected ? 1.5 : 1
                     )
             }
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
@@ -855,16 +823,13 @@ struct HostedFeatureRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(AppColors.calorie.opacity(0.10))
-                    .frame(width: 36, height: 36)
-                Image(systemName: icon)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(AppColors.calorie)
-            }
-            .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(AppColors.calorie)
+                .frame(width: 22, height: 22)
+                .padding(.top, 1)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
                 Text(title)
                     .font(.system(.subheadline, design: .rounded, weight: .semibold))
                     .foregroundStyle(.primary)
@@ -891,23 +856,19 @@ struct HostedCreditRow: View {
         VStack(spacing: 0) {
             Button(action: action) {
                 HStack(spacing: 12) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(AppColors.calorie.opacity(0.10))
-                            .frame(width: 36, height: 36)
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(AppColors.calorie)
-                    }
-                    .accessibilityHidden(true)
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AppColors.calorie)
+                        .frame(width: 22, height: 22)
+                        .accessibilityHidden(true)
                     Text(title)
-                        .font(.system(.body, design: .rounded, weight: .medium))
+                        .font(.system(.body, design: .rounded))
                         .foregroundStyle(.primary)
                     Spacer()
                     ZStack(alignment: .trailing) {
                         Text(price)
                             .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                            .foregroundStyle(AppColors.calorie)
+                            .foregroundStyle(.secondary)
                             .opacity(isPurchasing ? 0 : 1)
                         ProgressView()
                             .opacity(isPurchasing ? 1 : 0)
@@ -921,7 +882,7 @@ struct HostedCreditRow: View {
             .disabled(!isEnabled)
 
             Divider()
-                .padding(.leading, 62)
+                .padding(.leading, 48)
                 .frame(height: showsDivider ? nil : 0)
                 .opacity(showsDivider ? 1 : 0)
         }
