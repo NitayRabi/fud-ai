@@ -89,7 +89,7 @@ fun PostUpdatePromptsHost(container: AppContainer, enabled: Boolean) {
             return
         }
         delay(delayMillis)
-        prefs.setHasSeenMeetDeveloperPrompt(true)
+        // Mark seen only on Done so opening Instagram/X and returning keeps the dialog.
         showMeetDeveloper = true
     }
 
@@ -108,20 +108,24 @@ fun PostUpdatePromptsHost(container: AppContainer, enabled: Boolean) {
 
     if (showMeetDeveloper) {
         MeetDeveloperDialog(
-            onDismiss = {
+            onDone = {
                 showMeetDeveloper = false
-                scope.launch { finishFlow() }
+                scope.launch {
+                    prefs.setHasSeenMeetDeveloperPrompt(true)
+                    finishFlow()
+                }
             }
         )
     }
 }
 
 @Composable
-private fun MeetDeveloperDialog(onDismiss: () -> Unit) {
+private fun MeetDeveloperDialog(onDone: () -> Unit) {
     val context = LocalContext.current
     fun open(url: String) = context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 
-    FudGlassDialog(onDismissRequest = onDismiss) {
+    // Ignore back / outside tap — only Done closes, so users can hop to Instagram and return.
+    FudGlassDialog(onDismissRequest = {}) {
         Text(
             text = stringResource(R.string.post_update_meet_dev_title),
             style = MaterialTheme.typography.titleLarge,
@@ -145,7 +149,7 @@ private fun MeetDeveloperDialog(onDismiss: () -> Unit) {
         }
         FudGlassDialogActions(
             primaryText = stringResource(R.string.action_done),
-            onPrimary = onDismiss
+            onPrimary = onDone
         )
     }
 }

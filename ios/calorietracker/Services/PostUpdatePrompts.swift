@@ -15,7 +15,8 @@ enum FudAILinks {
 /// defaults predate these keys qualify. Same once-only pattern as ReviewPrompter.
 enum PostUpdatePrompts {
     static let hostedUpsellSeenKey = "hasSeenHostedUpsellPrompt"
-    static let meetDeveloperSeenKey = "hasSeenMeetDeveloperPrompt"
+    /// Named "completed" (not "seen") so only Done counts — opening Instagram must not consume it.
+    static let meetDeveloperSeenKey = "hasCompletedMeetDeveloperPrompt"
 
     static var hasSeenHostedUpsell: Bool {
         get { UserDefaults.standard.bool(forKey: hostedUpsellSeenKey) }
@@ -44,8 +45,10 @@ enum PostUpdatePrompts {
 
 /// Friendly one-time sheet pointing existing users at the developer's socials
 /// and the Product Hunt page. Links reuse `FudAILinks` (same as About).
+/// Stays up while opening socials — only `onDone` (Done button) dismisses it.
 struct MeetDeveloperSheet: View {
-    @Environment(\.dismiss) private var dismiss
+    var onDone: () -> Void
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         NavigationStack {
@@ -82,15 +85,21 @@ struct MeetDeveloperSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button("Done", action: onDone)
                 }
             }
         }
         .presentationDetents([.medium, .large])
+        // Swipe-down must not count as "seen" — only Done closes the prompt.
+        .interactiveDismissDisabled()
     }
 
     private func linkRow(_ title: LocalizedStringKey, systemImage: String, url: URL) -> some View {
-        Link(destination: url) {
+        // Button + openURL keeps the sheet up when jumping to Instagram/X/etc.
+        // (SwiftUI `Link` can dismiss the presenting sheet when leaving the app.)
+        Button {
+            openURL(url)
+        } label: {
             Label {
                 Text(title)
             } icon: {
