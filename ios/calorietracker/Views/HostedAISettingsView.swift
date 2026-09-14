@@ -102,7 +102,78 @@ struct HostedAISettingsView: View {
     }
 }
 
+/// Conversion-minded Hosted AI paywall: hero → Plus/Pro plan cards with a
+/// monthly/yearly toggle → pinned subscribe CTA, with credit packs demoted to a
+/// secondary section. Purchase/restore plumbing is unchanged from the original
+/// List-based sheet; only the presentation differs.
 struct HostedPaywallView: View {
+    private enum BillingPeriod: String, CaseIterable, Identifiable {
+        case monthly
+        case yearly
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .monthly: String(localized: "Monthly")
+            case .yearly: String(localized: "Yearly")
+            }
+        }
+
+        var perUnit: String {
+            switch self {
+            case .monthly: String(localized: "per month")
+            case .yearly: String(localized: "per year")
+            }
+        }
+
+        /// RevenueCat package types first, then StoreKit's subscription period,
+        /// then the product-id suffix so custom package identifiers still map.
+        init?(package: Package) {
+            switch package.packageType {
+            case .monthly:
+                self = .monthly
+                return
+            case .annual:
+                self = .yearly
+                return
+            default:
+                break
+            }
+            if let period = package.storeProduct.subscriptionPeriod {
+                switch (period.unit, period.value) {
+                case (.month, 1):
+                    self = .monthly
+                    return
+                case (.year, 1), (.month, 12):
+                    self = .yearly
+                    return
+                default:
+                    break
+                }
+            }
+            let productID = package.storeProduct.productIdentifier
+            if productID.hasSuffix(".yearly") {
+                self = .yearly
+            } else if productID.hasSuffix(".monthly") {
+                self = .monthly
+            } else {
+                return nil
+            }
+        }
+    }
+
+    private struct Catalog {
+        var subscriptions: [HostedPlan: [BillingPeriod: Package]] = [:]
+        var creditPacks: [Package] = []
+
+        var hasSubscriptions: Bool { subscriptions.values.contains { !$0.isEmpty } }
+    }
+
+    private static let plans: [HostedPlan] = [.plus, .pro]
+    private static let termsURL = URL(string: "https://fud-ai.app/terms.html")!
+    private static let privacyURL = URL(string: "https://fud-ai.app/privacy.html")!
+
     @Environment(\.dismiss) private var dismiss
     var onSubscribed: (() -> Void)? = nil
     @State private var rc = RevenueCatManager.shared
@@ -110,38 +181,63 @@ struct HostedPaywallView: View {
     @State private var errorMessage: String?
     @State private var isRestoring = false
     @State private var restoreMessage: String?
+    @State private var selectedPlan: HostedPlan = .plus
+    @State private var selectedPeriod: BillingPeriod = .yearly
+    @State private var didFinishInitialLoad = false
+    @Namespace private var periodToggleNamespace
+
+    private var isBusy: Bool { purchasingID != nil || isRestoring }
 
     var body: some View {
         NavigationStack {
-            List {
-                Section("Plus — \(HostedAIConstants.plusDailyLimit)/day") {
-                    packageRows(offeringID: "plus")
-                }
-                Section("Pro — \(HostedAIConstants.proDailyLimit)/day") {
-                    packageRows(offeringID: "pro")
-                }
-                Section {
-                    Button {
-                        Task { await restore() }
-                    } label: {
-                        HStack {
-                            Text("Restore Purchases")
-                            Spacer()
-                            if isRestoring {
-                                ProgressView()
-                            }
-                        }
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 28) {
+                    hero
+                    plansSection
+                    if catalog.hasSubscriptions {
+                        featureList
                     }
-                    .disabled(isRestoring || purchasingID != nil)
+                    if !catalog.creditPacks.isEmpty {
+                        creditPacksSection
+                    }
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 16)
             }
-            .navigationTitle("Hosted AI")
+            .background(AppColors.appBackground.ignoresSafeArea())
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                purchaseBar
+            }
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title2)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityLabel("Close")
                 }
             }
-            .task { await rc.loadOfferings() }
+            .task {
+                await rc.loadOfferings()
+                didFinishInitialLoad = true
+                // Subscribers opening this sheet are here to upgrade; start them on Pro.
+                if rc.activePlan == .plus {
+                    selectedPlan = .pro
+                }
+                reconcileSelection()
+            }
+            .onChange(of: selectedPeriod) { _, _ in
+                reconcileSelection()
+            }
+            .onChange(of: rc.offerings) { _, _ in
+                reconcileSelection()
+            }
             .alert("Purchase", isPresented: Binding(
                 get: { errorMessage != nil },
                 set: { if !$0 { errorMessage = nil } }
@@ -161,30 +257,521 @@ struct HostedPaywallView: View {
         }
     }
 
+    // MARK: - Hero
+
+    private var hero: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: AppColors.calorieGradient,
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 76, height: 76)
+                    .shadow(color: AppColors.calorie.opacity(0.35), radius: 14, y: 8)
+                Image(systemName: "sparkles")
+                    .font(.system(size: 34, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            .accessibilityHidden(true)
+
+            VStack(spacing: 8) {
+                Text("Hosted AI")
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                Text("Let Fud AI run the models for you. No API keys, no setup — and BYOK stays free forever.")
+                    .font(.system(.callout, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 8)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 8)
+    }
+
+    // MARK: - Plans
+
     @ViewBuilder
-    private func packageRows(offeringID: String) -> some View {
-        if let packages = rc.offerings?.offering(identifier: offeringID)?.availablePackages {
-            ForEach(packages, id: \.identifier) { package in
-                Button {
-                    Task { await purchase(package) }
-                } label: {
-                    HStack {
-                        Text(package.storeProduct.localizedTitle)
-                        Spacer()
-                        if purchasingID == package.storeProduct.productIdentifier {
-                            ProgressView()
-                        } else {
-                            Text(package.storeProduct.localizedPriceString)
-                                .foregroundStyle(.secondary)
+    private var plansSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Choose your plan")
+
+            if catalog.hasSubscriptions {
+                if availablePeriods.count > 1 {
+                    periodToggle
+                }
+                VStack(spacing: 10) {
+                    ForEach(Self.plans, id: \.rawValue) { plan in
+                        if let package = package(for: plan) {
+                            planCard(plan: plan, package: package)
                         }
                     }
                 }
-                .disabled(purchasingID != nil || isRestoring)
+            } else if rc.isLoadingOfferings || !didFinishInitialLoad {
+                statusCard {
+                    ProgressView()
+                    Text("Loading plans…")
+                        .font(.system(.subheadline, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                statusCard {
+                    Image(systemName: "wifi.slash")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                    Text("Plans are unavailable right now.")
+                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    Text("Check your connection and try again.")
+                        .font(.system(.footnote, design: .rounded))
+                        .foregroundStyle(.secondary)
+                    Button("Try Again") {
+                        Task { await rc.loadOfferings() }
+                    }
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .buttonStyle(.bordered)
+                    .tint(AppColors.calorie)
+                }
             }
-        } else {
-            Text("Plans loading…")
-                .foregroundStyle(.secondary)
         }
+    }
+
+    private var periodToggle: some View {
+        HStack(spacing: 4) {
+            ForEach(availablePeriods) { period in
+                let isSelected = period == selectedPeriod
+                Button {
+                    withAnimation(.snappy) { selectedPeriod = period }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(period.title)
+                            .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                        if period == .yearly, let savings = yearlySavingsPercent {
+                            Text("Save \(savings)%")
+                                .font(.system(.caption2, design: .rounded, weight: .bold))
+                                .foregroundStyle(isSelected ? Color.white : AppColors.calorie)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    isSelected ? Color.white.opacity(0.22) : AppColors.calorie.opacity(0.12),
+                                    in: Capsule()
+                                )
+                        }
+                    }
+                    .foregroundStyle(isSelected ? Color.white : Color.primary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 38)
+                    .background {
+                        if isSelected {
+                            Capsule()
+                                .fill(AppColors.calorie)
+                                .matchedGeometryEffect(id: "selectedPeriod", in: periodToggleNamespace)
+                        }
+                    }
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
+        .padding(4)
+        .background(AppColors.appCard, in: Capsule())
+        .overlay {
+            Capsule().strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+        }
+        .disabled(isBusy)
+    }
+
+    private func planCard(plan: HostedPlan, package: Package) -> some View {
+        let isSelected = plan == selectedPlan
+        let isCurrent = rc.activePlan == plan
+        let product = package.storeProduct
+        let period = BillingPeriod(package: package) ?? selectedPeriod
+        let dailyLimit = HostedAIConstants.dailyLimit(for: plan)
+
+        return Button {
+            withAnimation(.snappy) { selectedPlan = plan }
+        } label: {
+            HStack(alignment: .center, spacing: 14) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(isSelected ? AppColors.calorie : Color.secondary.opacity(0.5))
+                    .contentTransition(.symbolEffect(.replace))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(plan.displayName)
+                            .font(.system(.headline, design: .rounded, weight: .semibold))
+                            .foregroundStyle(.primary)
+                        if isCurrent {
+                            tag("Current plan")
+                        } else if plan == .pro {
+                            tag("2× actions")
+                        }
+                    }
+                    Text("\(dailyLimit) AI actions every day")
+                        .font(.system(.subheadline, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(product.localizedPriceString)
+                        .font(.system(.title3, design: .rounded, weight: .bold))
+                        .foregroundStyle(.primary)
+                        .contentTransition(.numericText())
+                    if let perMonth = monthlyEquivalent(for: product) {
+                        Text("≈ \(perMonth) / mo")
+                            .font(.system(.caption, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text(period.perUnit)
+                            .font(.system(.caption, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(16)
+            .background(
+                isSelected ? AppColors.calorie.opacity(0.06) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            )
+            .background(AppColors.appCard, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? AppColors.calorie : Color.primary.opacity(0.06),
+                        lineWidth: isSelected ? 2 : 1
+                    )
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(isBusy)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(product.localizedTitle), \(product.localizedPriceString) \(period.perUnit)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    // MARK: - Features
+
+    private var featureList: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("What's included")
+            VStack(alignment: .leading, spacing: 14) {
+                featureRow(
+                    icon: "camera.viewfinder",
+                    title: String(localized: "Every AI feature, zero setup"),
+                    detail: String(localized: "Photo, voice and text logging, Coach, and workout AI — no provider account or API key.")
+                )
+                featureRow(
+                    icon: "clock.arrow.circlepath",
+                    title: String(localized: "A fresh daily pool"),
+                    detail: String(localized: "Your allowance resets at midnight UTC. Credit packs cover the busy days.")
+                )
+                featureRow(
+                    icon: "lock.shield.fill",
+                    title: String(localized: "Only your request is sent"),
+                    detail: String(localized: "Each photo, voice note, or message you send is processed through Fud AI's hosted service. Your diary and history are stored on this device. Cancel anytime in the App Store.")
+                )
+            }
+            .padding(16)
+            .background(AppColors.appCard, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+            }
+        }
+    }
+
+    private func featureRow(icon: String, title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(AppColors.calorie.opacity(0.10))
+                    .frame(width: 36, height: 36)
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(AppColors.calorie)
+            }
+            .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Text(detail)
+                    .font(.system(.footnote, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    // MARK: - Credit packs
+
+    private var creditPacksSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                sectionTitle("Credit packs")
+                Text("Top up when you run past your daily pool. Credits are one-time purchases and are spent only while a plan is active.")
+                    .font(.system(.footnote, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            VStack(spacing: 0) {
+                ForEach(Array(catalog.creditPacks.enumerated()), id: \.element.storeProduct.productIdentifier) { index, package in
+                    creditRow(package)
+                    if index < catalog.creditPacks.count - 1 {
+                        Divider().padding(.leading, 62)
+                    }
+                }
+            }
+            .background(AppColors.appCard, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+            }
+        }
+    }
+
+    private func creditRow(_ package: Package) -> some View {
+        let product = package.storeProduct
+        return Button {
+            Task { await purchase(package) }
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(AppColors.calorie.opacity(0.10))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(AppColors.calorie)
+                }
+                .accessibilityHidden(true)
+                Text(creditTitle(for: product))
+                    .font(.system(.body, design: .rounded, weight: .medium))
+                    .foregroundStyle(.primary)
+                Spacer()
+                if purchasingID == product.productIdentifier {
+                    ProgressView()
+                } else {
+                    Text(product.localizedPriceString)
+                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                        .foregroundStyle(AppColors.calorie)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isBusy)
+    }
+
+    // MARK: - Purchase bar
+
+    private var purchaseBar: some View {
+        VStack(spacing: 10) {
+            Button {
+                if let package = selectedPackage {
+                    Task { await purchase(package) }
+                }
+            } label: {
+                ZStack {
+                    if let package = selectedPackage, purchasingID == package.storeProduct.productIdentifier {
+                        ProgressView().tint(.white)
+                    } else {
+                        Text(ctaTitle)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(HostedPrimaryButtonStyle())
+            .disabled(selectedPackage == nil || isBusy)
+            .opacity(selectedPackage == nil ? 0.45 : 1)
+
+            if let package = selectedPackage {
+                let product = package.storeProduct
+                let period = BillingPeriod(package: package) ?? selectedPeriod
+                Text("\(product.localizedTitle) · \(product.localizedPriceString) \(period.perUnit). Renews automatically, cancel anytime.")
+                    .font(.system(.caption, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .contentTransition(.opacity)
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    Task { await restore() }
+                } label: {
+                    HStack(spacing: 6) {
+                        if isRestoring {
+                            ProgressView().controlSize(.mini)
+                        }
+                        Text("Restore Purchases")
+                    }
+                }
+                .disabled(isBusy)
+                Text("·")
+                Link("Terms", destination: Self.termsURL)
+                Text("·")
+                Link("Privacy", destination: Self.privacyURL)
+            }
+            .font(.system(.footnote, design: .rounded, weight: .medium))
+            .foregroundStyle(.secondary)
+            .tint(.secondary)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+        .background(.bar)
+    }
+
+    // MARK: - Small helpers
+
+    private func sectionTitle(_ title: LocalizedStringKey) -> some View {
+        Text(title)
+            .font(.system(.headline, design: .rounded, weight: .semibold))
+            .foregroundStyle(.primary)
+    }
+
+    private func tag(_ text: LocalizedStringKey) -> some View {
+        Text(text)
+            .font(.system(.caption2, design: .rounded, weight: .bold))
+            .foregroundStyle(AppColors.calorie)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(AppColors.calorie.opacity(0.12), in: Capsule())
+    }
+
+    private func statusCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 10) {
+            content()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 28)
+        .padding(.horizontal, 16)
+        .background(AppColors.appCard, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+        }
+    }
+
+    private func creditTitle(for product: StoreProduct) -> String {
+        if let amount = HostedAIConstants.creditAmount(for: product.productIdentifier) {
+            return String(localized: "\(amount) credits")
+        }
+        return product.localizedTitle
+    }
+
+    // MARK: - Catalog
+
+    /// Splits the `plus` / `pro` offerings into subscriptions keyed by plan and
+    /// period, and a deduplicated list of credit packs (both offerings carry the
+    /// same consumables). Rendering is entirely driven by what RevenueCat returns.
+    private var catalog: Catalog {
+        var result = Catalog()
+        var creditsByProduct: [String: Package] = [:]
+        for plan in Self.plans {
+            guard let packages = rc.offerings?.offering(identifier: plan.rawValue)?.availablePackages else { continue }
+            for package in packages {
+                let product = package.storeProduct
+                let isSubscription = product.productCategory == .subscription
+                    || HostedAIConstants.subscriptionProductIDs.contains(product.productIdentifier)
+                if isSubscription {
+                    if let period = BillingPeriod(package: package) {
+                        result.subscriptions[plan, default: [:]][period] = package
+                    }
+                } else if HostedAIConstants.creditAmount(for: product.productIdentifier) != nil {
+                    creditsByProduct[product.productIdentifier] = package
+                }
+            }
+        }
+        result.creditPacks = creditsByProduct.values.sorted {
+            (HostedAIConstants.creditAmount(for: $0.storeProduct.productIdentifier) ?? 0)
+                < (HostedAIConstants.creditAmount(for: $1.storeProduct.productIdentifier) ?? 0)
+        }
+        return result
+    }
+
+    private var availablePeriods: [BillingPeriod] {
+        BillingPeriod.allCases.filter { period in
+            Self.plans.contains { catalog.subscriptions[$0]?[period] != nil }
+        }
+    }
+
+    /// The package shown on a plan card for the selected period only. A plan
+    /// that doesn't offer the selected period gets no card, so the toggle, the
+    /// displayed price and the purchased product always share one term.
+    private func package(for plan: HostedPlan) -> Package? {
+        catalog.subscriptions[plan]?[selectedPeriod]
+    }
+
+    /// Plans that render a card for the selected period, in display order.
+    private var visiblePlans: [HostedPlan] {
+        Self.plans.filter { package(for: $0) != nil }
+    }
+
+    private var selectedPackage: Package? {
+        package(for: selectedPlan)
+    }
+
+    /// Keeps the selection purchasable: snap the period to one the catalog
+    /// offers, then make sure the selected plan has a visible card for it.
+    /// Prefers a plan the user isn't already on so the CTA is never a no-op.
+    private func reconcileSelection() {
+        let periods = availablePeriods
+        if !periods.isEmpty, !periods.contains(selectedPeriod) {
+            selectedPeriod = periods.contains(.yearly) ? .yearly : periods[0]
+        }
+        guard package(for: selectedPlan) == nil else { return }
+        let candidates = visiblePlans
+        if let plan = candidates.first(where: { $0 != rc.activePlan }) ?? candidates.first {
+            selectedPlan = plan
+        }
+    }
+
+    private var ctaTitle: String {
+        if rc.activePlan == .plus && selectedPlan == .pro {
+            return String(localized: "Upgrade to Pro")
+        }
+        return String(localized: "Subscribe to \(selectedPlan.displayName)")
+    }
+
+    /// Yearly discount versus paying monthly for the selected plan, only when
+    /// both prices exist in the same currency and the saving is meaningful.
+    private var yearlySavingsPercent: Int? {
+        guard let monthly = catalog.subscriptions[selectedPlan]?[.monthly]?.storeProduct,
+              let yearly = catalog.subscriptions[selectedPlan]?[.yearly]?.storeProduct,
+              monthly.currencyCode == yearly.currencyCode else { return nil }
+        let monthlyAnnualized = NSDecimalNumber(decimal: monthly.price * 12).doubleValue
+        let yearlyPrice = NSDecimalNumber(decimal: yearly.price).doubleValue
+        guard monthlyAnnualized > 0, yearlyPrice < monthlyAnnualized else { return nil }
+        let percent = Int(((1 - yearlyPrice / monthlyAnnualized) * 100).rounded())
+        return percent >= 5 ? percent : nil
+    }
+
+    /// "≈ ₹575 / mo" for multi-month terms, formatted with the product's own
+    /// price formatter so the currency always matches the store.
+    private func monthlyEquivalent(for product: StoreProduct) -> String? {
+        guard let period = product.subscriptionPeriod,
+              let formatter = product.priceFormatter else { return nil }
+        let months: Int
+        switch period.unit {
+        case .year: months = period.value * 12
+        case .month: months = period.value
+        default: return nil
+        }
+        guard months > 1 else { return nil }
+        let perMonth = product.price / Decimal(months)
+        return formatter.string(from: NSDecimalNumber(decimal: perMonth))
     }
 
     private func purchase(_ package: Package) async {
@@ -293,6 +880,25 @@ struct HostedCreditsSheet: View {
     }
 }
 
+/// Full-width gradient CTA matching the onboarding "Continue" button, shared by
+/// the hosted paywall sheets.
+struct HostedPrimaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(.body, design: .rounded, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 54)
+            .background(
+                LinearGradient(colors: AppColors.calorieGradient, startPoint: .leading, endPoint: .trailing),
+                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            )
+            .shadow(color: AppColors.calorie.opacity(configuration.isPressed ? 0.15 : 0.3), radius: 8, y: 4)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .animation(.snappy(duration: 0.2), value: configuration.isPressed)
+    }
+}
+
 /// Soft paywall when hosted quota is exhausted.
 struct HostedQuotaSoftPaywall: View {
     @Environment(\.dismiss) private var dismiss
@@ -301,24 +907,57 @@ struct HostedQuotaSoftPaywall: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 20) {
-                Text("Out of Hosted Actions")
-                    .font(.title2.bold())
-                Text("Buy credits, upgrade your plan, or switch to BYOK with your own API key.")
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
-                Button("Buy Credits or Upgrade") {
-                    dismiss()
-                    onBuyCreditsOrUpgrade()
+            VStack(spacing: 24) {
+                Spacer(minLength: 0)
+
+                ZStack {
+                    Circle()
+                        .fill(AppColors.calorie.opacity(0.12))
+                        .frame(width: 88, height: 88)
+                    Image(systemName: "hourglass")
+                        .font(.system(size: 36, weight: .semibold))
+                        .foregroundStyle(AppColors.calorie)
                 }
-                .buttonStyle(.borderedProminent)
-                Button("Switch to BYOK") {
-                    AIModeSettings.mode = .byok
-                    onSwitchBYOK()
-                    dismiss()
+                .accessibilityHidden(true)
+
+                VStack(spacing: 8) {
+                    Text("Out of Hosted Actions")
+                        .font(.system(.title2, design: .rounded, weight: .bold))
+                        .multilineTextAlignment(.center)
+                    Text("Buy credits, upgrade your plan, or switch to BYOK with your own API key.")
+                        .font(.system(.callout, design: .rounded))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+
+                VStack(spacing: 12) {
+                    Button("Buy Credits or Upgrade") {
+                        dismiss()
+                        onBuyCreditsOrUpgrade()
+                    }
+                    .buttonStyle(HostedPrimaryButtonStyle())
+
+                    Button {
+                        AIModeSettings.mode = .byok
+                        onSwitchBYOK()
+                        dismiss()
+                    } label: {
+                        Text("Switch to BYOK")
+                            .font(.system(.body, design: .rounded, weight: .semibold))
+                            .foregroundStyle(AppColors.calorie)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .background(AppColors.calorie.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            .padding()
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
+            .background(AppColors.appBackground.ignoresSafeArea())
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
