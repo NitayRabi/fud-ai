@@ -25,6 +25,8 @@ object CloudBackupPolicy {
         "widget_snapshot_v1",
         "lastNotifiedUpdateVersion",
         "cloudBackupFileId",
+        // Local one-shot alarm state — restoring it would skip re-arming on a new device.
+        "productHuntLaunchNotificationScheduled",
     )
 
     private val photoName = Regex("^[A-Za-z0-9._-]+\\.(jpg|jpeg|png|webp)$", RegexOption.IGNORE_CASE)

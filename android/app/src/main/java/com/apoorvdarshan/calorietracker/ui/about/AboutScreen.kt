@@ -67,6 +67,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import com.apoorvdarshan.calorietracker.R
+import com.apoorvdarshan.calorietracker.models.FudAILinks
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.apoorvdarshan.calorietracker.services.update.AndroidUpdateChecker
@@ -219,7 +220,7 @@ fun AboutSettingsRows(category: AboutSettingsCategory) {
                 }
                 Hairline()
                 AboutRow(Icons.Filled.ThumbUp, stringResource(R.string.about_vote_ph)) {
-                    open("https://www.producthunt.com/products/fud-ai")
+                    open(FudAILinks.PRODUCT_HUNT)
                 }
             }
 
@@ -237,11 +238,11 @@ fun AboutSettingsRows(category: AboutSettingsCategory) {
 
             AboutSettingsCategory.COMMUNITY -> {
                 AboutRow(Icons.Filled.Forum, stringResource(R.string.about_join_discord)) {
-                    open("https://discord.gg/Py4VrFctP3")
+                    open(FudAILinks.DISCORD)
                 }
                 Hairline()
                 AboutRow(Icons.Filled.AlternateEmail, stringResource(R.string.about_follow_x)) {
-                    open("https://x.com/apoorvdarshan")
+                    open(FudAILinks.X)
                 }
                 Hairline()
                 AboutRow(Icons.Filled.Work, stringResource(R.string.about_follow_linkedin)) {
@@ -249,7 +250,7 @@ fun AboutSettingsRows(category: AboutSettingsCategory) {
                 }
                 Hairline()
                 AboutRow(Icons.Filled.CameraAlt, stringResource(R.string.about_follow_instagram)) {
-                    open("https://www.instagram.com/apoorvcodes/")
+                    open(FudAILinks.INSTAGRAM)
                 }
             }
 

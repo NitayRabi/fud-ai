@@ -30,12 +30,18 @@ final class RevenueCatManager: NSObject {
         Task { await refreshCustomerInfo() }
     }
 
-    func refreshCustomerInfo() async {
+    /// Returns whether customer info was successfully loaded. Callers that gate
+    /// one-time UI on entitlement state must not treat a failed refresh as "no plan".
+    @discardableResult
+    func refreshCustomerInfo() async -> Bool {
         do {
             let info = try await Purchases.shared.customerInfo()
             applyCustomerInfo(info)
+            lastError = nil
+            return true
         } catch {
             lastError = error.localizedDescription
+            return false
         }
     }
 

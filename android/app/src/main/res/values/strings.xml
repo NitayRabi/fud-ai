@@ -1222,6 +1222,22 @@
     <string name="unit_ml">ml</string>
     <string name="notif_update_title">Update available</string>
     <string name="notif_update_text">A new version of Fud AI is ready. Tap to update.</string>
+    <string name="notif_channel_announcements">Announcements</string>
+    <string name="notif_channel_announcements_desc">Occasional one-time news from Fud AI, like the Product Hunt launch.</string>
+    <string name="notif_product_hunt_title">Fud AI is live on Product Hunt 🚀</string>
+    <string name="notif_product_hunt_text">We just launched! Tap to vote and help more people find Fud AI.</string>
+
+    <!-- One-time post-update prompts (existing users only) -->
+    <string name="post_update_hosted_title">Optional: let us handle the AI keys</string>
+    <string name="post_update_hosted_body">Fud AI is free with your own API keys (BYOK) — and always will be. If juggling keys feels confusing, Plus and Pro plans run the AI for you with no keys to manage. Totally optional, nothing changes unless you switch.</string>
+    <string name="post_update_hosted_cta">Learn more</string>
+    <string name="post_update_hosted_keep_byok">Keep BYOK (free)</string>
+    <string name="post_update_hosted_android_title">Hosted AI is coming to Android</string>
+    <string name="post_update_hosted_android_body">Plus and Pro hosted plans are live on iPhone first; Android is next. Until then nothing changes here — BYOK stays free forever, and you can keep using your own keys exactly as you do today.</string>
+    <string name="post_update_hosted_android_got_it">Got it</string>
+    <string name="post_update_meet_dev_title">Meet the developer</string>
+    <string name="post_update_meet_dev_greeting">Hi, I\'m Apoorv 👋</string>
+    <string name="post_update_meet_dev_body">I build Fud AI on my own, in the open. Come say hi, share feedback, or just follow along — it genuinely helps.</string>
     <string name="settings_calc_intro">Your daily calorie and macro targets are set by AI. When you tap Recalculate Goals — or automatically about once a week if Adaptive Goals is on — Fud AI sends your profile, the reference equations below, privacy-safe daily nutrition totals, exact dated weight, body-fat, and tape measurements, aggregate workout counts, duration, sets, and reps, and optional Health Connect energy to your AI provider. Food names, notes, photos, ingredients, and exercise names are not sent for this calculation. It starts from these peer-reviewed formulas, then adjusts them to your real data to estimate your true maintenance and targets.</string>
     <string name="settings_calc_sec_bmr">Resting metabolism (BMR)</string>
     <string name="settings_calc_sec_tdee">Daily energy expenditure (TDEE)</string>

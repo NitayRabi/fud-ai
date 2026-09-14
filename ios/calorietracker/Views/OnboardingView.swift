@@ -1498,6 +1498,8 @@ struct OnboardingView: View {
                         forKey: FoodLogSortOrder.storageKey
                     )
                 }
+                // Fresh installs must never see the "existing user" post-update prompts.
+                PostUpdatePrompts.markAllSeenForFreshInstall()
                 hasCompletedOnboarding = true
             } label: {
                 Text("Let's get started!")

@@ -372,6 +372,10 @@
             android:exported="false" />
 
         <receiver
+            android:name=".services.ProductHuntLaunchReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".services.FastingBootReceiver"
             android:enabled="true"
             android:exported="true">

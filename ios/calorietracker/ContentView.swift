@@ -121,6 +121,10 @@ struct ContentView: View {
     @State private var selectedTab: AppTab = .home
     @State private var quickActionRequest: QuickActionRequest?
     @State private var foodLogMethodRequest: FoodLogMethodRequest?
+    // One-time post-update prompts for existing users (see PostUpdatePrompts).
+    @State private var showHostedUpsellPrompt = false
+    @State private var showHostedUpsellPaywall = false
+    @State private var showMeetDeveloperPrompt = false
 
     private var workoutsTabIcon: String {
         WorkoutTabMode.mode(for: workoutTabModeRaw).tabIcon
@@ -132,6 +136,23 @@ struct ContentView: View {
             .task {
                 consumePendingLaunchRoutes()
                 await refreshAppUpdateState()
+                await runPostUpdatePromptsIfNeeded()
+            }
+            .alert("Optional: let us handle the AI keys", isPresented: $showHostedUpsellPrompt) {
+                Button("See Plus & Pro plans") {
+                    showHostedUpsellPaywall = true
+                }
+                Button("Keep BYOK (free)", role: .cancel) {
+                    continueToMeetDeveloperPrompt()
+                }
+            } message: {
+                Text("Fud AI is free with your own API keys (BYOK) — and always will be. If juggling keys feels confusing, Plus and Pro plans run the AI for you with no keys to manage. Totally optional, nothing changes unless you switch.")
+            }
+            .sheet(isPresented: $showHostedUpsellPaywall, onDismiss: { continueToMeetDeveloperPrompt() }) {
+                HostedPaywallView()
+            }
+            .sheet(isPresented: $showMeetDeveloperPrompt, onDismiss: { scheduleProductHuntLaunchReminder() }) {
+                MeetDeveloperSheet()
             }
             .onReceive(NotificationCenter.default.publisher(for: .quickActionRequested)) { _ in
                 consumePendingLaunchRoutes()
@@ -234,6 +255,59 @@ struct ContentView: View {
         if case let .available(_, latest, url) = appUpdateState {
             await notificationManager.notifyUpdateAvailable(version: latest, url: url)
         }
+    }
+
+    // MARK: - Post-update prompts (existing users, one-time)
+
+    /// Sequence: hosted upsell (if eligible) → meet the developer → arm the Product Hunt
+    /// launch reminder. Never stacks two dialogs; each step advances from the previous one's
+    /// dismiss handler. Flags are written when a prompt is *shown* so a force-quit mid-prompt
+    /// can't replay it.
+    @MainActor
+    private func runPostUpdatePromptsIfNeeded() async {
+        // Let the first frame and any launch route (quick action / deep link) settle first.
+        try? await Task.sleep(for: .seconds(2))
+        guard quickActionRequest == nil, foodLogMethodRequest == nil else {
+            scheduleProductHuntLaunchReminder()
+            return
+        }
+
+        if !PostUpdatePrompts.hasSeenHostedUpsell {
+            // Don't treat a failed refresh as "no entitlement" — that would upsell a
+            // paid BYOK subscriber and permanently consume the one-time prompt.
+            let refreshed = await RevenueCatManager.shared.refreshCustomerInfo()
+            guard refreshed else {
+                continueToMeetDeveloperPrompt(delay: 0)
+                return
+            }
+            if PostUpdatePrompts.isHostedUpsellEligible {
+                PostUpdatePrompts.hasSeenHostedUpsell = true
+                showHostedUpsellPrompt = true
+                return
+            }
+            PostUpdatePrompts.hasSeenHostedUpsell = true
+        }
+        continueToMeetDeveloperPrompt(delay: 0)
+    }
+
+    private func continueToMeetDeveloperPrompt() {
+        continueToMeetDeveloperPrompt(delay: 1)
+    }
+
+    private func continueToMeetDeveloperPrompt(delay: Double) {
+        guard !PostUpdatePrompts.hasSeenMeetDeveloper else {
+            scheduleProductHuntLaunchReminder()
+            return
+        }
+        Task { @MainActor in
+            if delay > 0 { try? await Task.sleep(for: .seconds(delay)) }
+            PostUpdatePrompts.hasSeenMeetDeveloper = true
+            showMeetDeveloperPrompt = true
+        }
+    }
+
+    private func scheduleProductHuntLaunchReminder() {
+        Task { await notificationManager.scheduleProductHuntLaunchReminderIfNeeded() }
     }
 }
 
@@ -421,7 +495,7 @@ private struct AboutSettingsSections: View {
                 }
                 .tint(.primary)
 
-                Link(destination: URL(string: "https://www.producthunt.com/products/fud-ai")!) {
+                Link(destination: FudAILinks.productHunt) {
                     Label {
                         Text("Vote on Product Hunt")
                     } icon: {
@@ -473,7 +547,7 @@ private struct AboutSettingsSections: View {
 
             case .community:
                 Section {
-                Link(destination: URL(string: "https://discord.gg/Py4VrFctP3")!) {
+                Link(destination: FudAILinks.discord) {
                     Label {
                         Text("Join Discord")
                     } icon: {
@@ -483,7 +557,7 @@ private struct AboutSettingsSections: View {
                 }
                 .tint(.primary)
 
-                Link(destination: URL(string: "https://x.com/apoorvdarshan")!) {
+                Link(destination: FudAILinks.x) {
                     Label {
                         Text("Follow on X")
                     } icon: {
@@ -503,7 +577,7 @@ private struct AboutSettingsSections: View {
                 }
                 .tint(.primary)
 
-                Link(destination: URL(string: "https://www.instagram.com/apoorvcodes/")!) {
+                Link(destination: FudAILinks.instagram) {
                     Label {
                         Text("Follow on Instagram")
                     } icon: {

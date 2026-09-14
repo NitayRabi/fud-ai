@@ -1159,6 +1159,7 @@ struct NotificationSettingsView: View {
                                 applyMealReminders()
                                 applyWaterReminder()
                                 applyFastingGoalNotification()
+                                await notificationManager.scheduleProductHuntLaunchReminderIfNeeded()
                             }
                         }
                     } else {
