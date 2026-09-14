@@ -414,7 +414,7 @@ You can also help by [voting on Product Hunt](https://www.producthunt.com/produc
 Thanks to everyone who has contributed to making Fud AI better:
 
 <a href="https://github.com/apoorvdarshan/fud-ai/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=apoorvdarshan/fud-ai&amp;max=100&amp;columns=12&amp;v=refresh-20260914" alt="Contributors" />
+  <img src="https://contrib.rocks/image?repo=apoorvdarshan/fud-ai&amp;max=100&amp;columns=12" alt="Contributors" />
 </a>
 
 ## Credits
