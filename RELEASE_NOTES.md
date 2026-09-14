@@ -7,13 +7,29 @@ same marketing version can share a feature summary while identifying different b
 
 ## Unreleased
 
-- Android HTTPS now requires modern TLS and strong certificate keys. Outdated custom HTTPS servers may need a certificate/TLS upgrade. User-selected local HTTP remains supported.
+(none yet)
 
-- Security: updated the web development toolchain to sharp 0.35.4 for GHSA-rgj7-g3m4-5g8c (libheif vulnerabilities). This dependency is used by local tooling, not shipped in the mobile apps.
+## v7.0
 
-- Added automated web and Android checks before GitHub release workflows proceed.
-- Added generated-input tests for challenge API validation.
-- Fixed Android resource access during Compose updates and completed history-counter plural forms.
+Fud AI 7.0 — optional hosted AI on iPhone, richer workouts and Health insights, and two new languages.
+
+NEW
+• Choose Bring Your Own Key or optional Plus/Pro hosted AI during onboarding (iOS). Hosted uses a daily action pool plus credit packs; free forever stays fully usable with your own keys. Android remains BYOK + Ko-fi.
+• See daily steps from Apple Health / Health Connect on Home, plus a clearer burn/deficit line. Adaptive Goals is on by default for new setups.
+• Import Apple Watch workouts from HealthKit into Workouts and Progress (iOS).
+• Log Walk/Run from the Workouts menu; create custom exercises; smarter search; set autofill from lift history with Coach-aware training context.
+• Set meal log date and time on the review sheet; configure which actions appear in Home +; add the iOS Log Food widget.
+• Pinch-zoom meal photos and optionally save them to the gallery after a successful log.
+• Czech and Ukrainian join the app — 18 languages on iOS and Android.
+• Optional iCloud / Google Drive backup gains sign-out, account switch, and a clearer rollout disclaimer.
+
+IMPROVED
+• Faster Workouts open and smoother meal/Coach photo thumbnails.
+• More reliable Health Connect nutrition writes, diary safety guards, and exercise demos that load on demand.
+• Community links for Discord and Instagram in Settings.
+• Reliability, privacy-documentation, and security updates.
+
+Existing logs, goals, Health data, widgets, workout history, and BYOK settings are preserved during a normal update.
 
 
 ## v6.1
