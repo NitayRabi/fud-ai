@@ -915,16 +915,19 @@ struct HostedQuotaSoftPaywall: View {
                     }
                     .buttonStyle(HostedPrimaryButtonStyle())
 
-                    Button("Switch to BYOK") {
+                    Button {
                         AIModeSettings.mode = .byok
                         onSwitchBYOK()
                         dismiss()
+                    } label: {
+                        Text("Switch to BYOK")
+                            .font(.system(.body, design: .rounded, weight: .semibold))
+                            .foregroundStyle(AppColors.calorie)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .background(AppColors.calorie.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
-                    .font(.system(.body, design: .rounded, weight: .semibold))
-                    .foregroundStyle(AppColors.calorie)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-                    .background(AppColors.calorie.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 24)
