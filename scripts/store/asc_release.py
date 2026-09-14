@@ -153,27 +153,34 @@ def find_app(client: AscClient, bundle_id: str) -> str:
 def get_ios_app_store_version(
     client: AscClient, app_id: str, version_string: str
 ) -> dict[str, Any]:
-    query = urllib.parse.urlencode(
-        {
-            "filter[app]": app_id,
-            "filter[platform]": "IOS",
-            "filter[versionString]": version_string,
-            "limit": "5",
-        }
+    # Prefer the app relationship listing — some ASC API keys cannot
+    # GET_COLLECTION on /appStoreVersions with filter[app]=… (403).
+    matches: list[dict[str, Any]] = []
+    path: str | None = (
+        f"/apps/{app_id}/appStoreVersions?"
+        + urllib.parse.urlencode({"limit": "50", "filter[platform]": "IOS"})
     )
-    payload = client.get(f"/appStoreVersions?{query}")
-    data = payload.get("data") or []
-    if not data:
+    while path:
+        payload = client.get(path)
+        for row in payload.get("data") or []:
+            attrs = row.get("attributes") or {}
+            if attrs.get("versionString") == version_string:
+                matches.append(row)
+        next_url = (payload.get("links") or {}).get("next")
+        if not next_url:
+            break
+        path = next_url
+    if not matches:
         fail(
             f"no IOS App Store version {version_string!r} for app {app_id} "
             "(create the version in App Store Connect first)"
         )
-    if len(data) > 1:
+    if len(matches) > 1:
         fail(
             f"ambiguous App Store versions for {version_string!r} on IOS — "
-            f"got {len(data)} records"
+            f"got {len(matches)} records"
         )
-    return data[0]
+    return matches[0]
 
 
 def localization_for_locale(
@@ -206,31 +213,8 @@ def upload_listing(
     locale: str,
     metadata_dir: Path,
 ) -> None:
+    del app_id  # app info (name/subtitle/privacy) locked while prior version is live
     loc_dir = metadata_dir / "ios" / locale
-
-    info_loc = get_app_info_localization(client, app_id, locale)
-    info_attrs: dict[str, str] = {}
-    name = read_text(loc_dir / "name.txt")
-    subtitle = read_text(loc_dir / "subtitle.txt")
-    if name:
-        info_attrs["name"] = name
-    if subtitle:
-        info_attrs["subtitle"] = subtitle
-    privacy = read_text(loc_dir / "privacy_url.txt")
-    if privacy:
-        info_attrs["privacyPolicyUrl"] = privacy
-    if info_attrs:
-        client.patch(
-            f"/appInfoLocalizations/{info_loc['id']}",
-            {
-                "data": {
-                    "type": "appInfoLocalizations",
-                    "id": info_loc["id"],
-                    "attributes": info_attrs,
-                }
-            },
-        )
-        print(f"  updated app info localization ({locale}): {', '.join(info_attrs)}")
 
     version_loc = localization_for_locale(
         client, f"/appStoreVersions/{version_id}/appStoreVersionLocalizations", locale
