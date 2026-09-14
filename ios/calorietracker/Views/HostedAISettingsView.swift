@@ -102,74 +102,90 @@ struct HostedAISettingsView: View {
     }
 }
 
-/// Conversion-minded Hosted AI paywall: hero → Plus/Pro plan cards with a
-/// monthly/yearly toggle → pinned subscribe CTA, with credit packs demoted to a
-/// secondary section. Purchase/restore plumbing is unchanged from the original
-/// List-based sheet; only the presentation differs.
-struct HostedPaywallView: View {
-    private enum BillingPeriod: String, CaseIterable, Identifiable {
-        case monthly
-        case yearly
+/// Billing term for a hosted subscription package.
+///
+/// Deliberately a top-level type (not nested in `HostedPaywallView`) and never
+/// used as a `ForEach` id. A `private` enum nested inside the view crashed
+/// Release builds with SIGSEGV in `_swift_getKeyPath` /
+/// `_walkKeyPathPattern` whenever SwiftUI instantiated a key path rooted on it
+/// (both `ForEach(Identifiable)` via `\.id` and `ForEach(_, id: \.rawValue)`).
+enum HostedBillingPeriod: String, CaseIterable {
+    case monthly
+    case yearly
 
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .monthly: String(localized: "Monthly")
-            case .yearly: String(localized: "Yearly")
-            }
+    var title: String {
+        switch self {
+        case .monthly: String(localized: "Monthly")
+        case .yearly: String(localized: "Yearly")
         }
+    }
 
-        var perUnit: String {
-            switch self {
-            case .monthly: String(localized: "per month")
-            case .yearly: String(localized: "per year")
-            }
+    var perUnit: String {
+        switch self {
+        case .monthly: String(localized: "per month")
+        case .yearly: String(localized: "per year")
         }
+    }
 
-        /// RevenueCat package types first, then StoreKit's subscription period,
-        /// then the product-id suffix so custom package identifiers still map.
-        init?(package: Package) {
-            switch package.packageType {
-            case .monthly:
+    /// RevenueCat package types first, then StoreKit's subscription period,
+    /// then the product-id suffix so custom package identifiers still map.
+    init?(package: Package) {
+        switch package.packageType {
+        case .monthly:
+            self = .monthly
+            return
+        case .annual:
+            self = .yearly
+            return
+        default:
+            break
+        }
+        if let period = package.storeProduct.subscriptionPeriod {
+            switch (period.unit, period.value) {
+            case (.month, 1):
                 self = .monthly
                 return
-            case .annual:
+            case (.year, 1), (.month, 12):
                 self = .yearly
                 return
             default:
                 break
             }
-            if let period = package.storeProduct.subscriptionPeriod {
-                switch (period.unit, period.value) {
-                case (.month, 1):
-                    self = .monthly
-                    return
-                case (.year, 1), (.month, 12):
-                    self = .yearly
-                    return
-                default:
-                    break
-                }
-            }
-            let productID = package.storeProduct.productIdentifier
-            if productID.hasSuffix(".yearly") {
-                self = .yearly
-            } else if productID.hasSuffix(".monthly") {
-                self = .monthly
-            } else {
-                return nil
-            }
+        }
+        let productID = package.storeProduct.productIdentifier
+        if productID.hasSuffix(".yearly") {
+            self = .yearly
+        } else if productID.hasSuffix(".monthly") {
+            self = .monthly
+        } else {
+            return nil
         }
     }
+}
 
-    private struct Catalog {
-        var subscriptions: [HostedPlan: [BillingPeriod: Package]] = [:]
-        var creditPacks: [Package] = []
+/// What the `plus` / `pro` RevenueCat offerings resolved to, split into
+/// subscriptions (by plan and term) and one-time credit packs. Credit packs are
+/// exposed as plain product-identifier strings so the paywall can key rows on
+/// `String` rather than on RevenueCat's Objective-C `Package` class.
+struct HostedPaywallCatalog {
+    var subscriptions: [HostedPlan: [HostedBillingPeriod: Package]] = [:]
+    /// Deduplicated credit pack product identifiers, ascending by credit amount.
+    var creditPackIDs: [String] = []
+    var creditPacks: [String: Package] = [:]
 
-        var hasSubscriptions: Bool { subscriptions.values.contains { !$0.isEmpty } }
-    }
+    var hasSubscriptions: Bool { subscriptions.values.contains { !$0.isEmpty } }
+    var hasCreditPacks: Bool { !creditPackIDs.isEmpty }
+}
 
+/// Conversion-minded Hosted AI paywall: hero → Plus/Pro plan cards with a
+/// monthly/yearly toggle → pinned subscribe CTA, with credit packs demoted to a
+/// secondary section. Purchase/restore plumbing is unchanged from the original
+/// List-based sheet; only the presentation differs.
+///
+/// Crash-safety rule for this view: no `ForEach` may take a key path rooted on
+/// an app-defined or RevenueCat type. Fixed lists are rendered explicitly and
+/// dynamic lists are keyed on `[String]` with `id: \.self`.
+struct HostedPaywallView: View {
     private static let plans: [HostedPlan] = [.plus, .pro]
     private static let termsURL = URL(string: "https://fud-ai.app/terms.html")!
     private static let privacyURL = URL(string: "https://fud-ai.app/privacy.html")!
@@ -182,7 +198,7 @@ struct HostedPaywallView: View {
     @State private var isRestoring = false
     @State private var restoreMessage: String?
     @State private var selectedPlan: HostedPlan = .plus
-    @State private var selectedPeriod: BillingPeriod = .yearly
+    @State private var selectedPeriod: HostedBillingPeriod = .yearly
     @State private var didFinishInitialLoad = false
     @Namespace private var periodToggleNamespace
 
@@ -197,7 +213,7 @@ struct HostedPaywallView: View {
                     if catalog.hasSubscriptions {
                         featureList
                     }
-                    if !catalog.creditPacks.isEmpty {
+                    if catalog.hasCreditPacks {
                         creditPacksSection
                     }
                 }
@@ -305,8 +321,10 @@ struct HostedPaywallView: View {
                     periodToggle
                 }
                 VStack(spacing: 10) {
-                    ForEach(Self.plans, id: \.rawValue) { plan in
-                        if let package = package(for: plan) {
+                    // Keyed on raw `String`s rather than a key path into
+                    // `HostedPlan`; see the crash note on `HostedBillingPeriod`.
+                    ForEach(Self.plans.map { $0.rawValue }, id: \.self) { rawPlan in
+                        if let plan = HostedPlan(rawValue: rawPlan), let package = package(for: plan) {
                             planCard(plan: plan, package: package)
                         }
                     }
@@ -339,44 +357,17 @@ struct HostedPaywallView: View {
         }
     }
 
+    /// Two fixed buttons in a plain `HStack`. Intentionally not a `ForEach`:
+    /// iterating `HostedBillingPeriod` (Identifiable or `id: \.rawValue`)
+    /// crashed Release builds in Swift's key-path runtime.
     private var periodToggle: some View {
-        HStack(spacing: 4) {
-            // Explicit id — ForEach(Identifiable) over a nested private enum
-            // crashes Release builds in Swift's key-path metadata (SIGSEGV).
-            ForEach(availablePeriods, id: \.rawValue) { period in
-                let isSelected = period == selectedPeriod
-                Button {
-                    withAnimation(.snappy) { selectedPeriod = period }
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(period.title)
-                            .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                        if period == .yearly, let savings = yearlySavingsPercent {
-                            Text("Save \(savings)%")
-                                .font(.system(.caption2, design: .rounded, weight: .bold))
-                                .foregroundStyle(isSelected ? Color.white : AppColors.calorie)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(
-                                    isSelected ? Color.white.opacity(0.22) : AppColors.calorie.opacity(0.12),
-                                    in: Capsule()
-                                )
-                        }
-                    }
-                    .foregroundStyle(isSelected ? Color.white : Color.primary)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 38)
-                    .background {
-                        if isSelected {
-                            Capsule()
-                                .fill(AppColors.calorie)
-                                .matchedGeometryEffect(id: "selectedPeriod", in: periodToggleNamespace)
-                        }
-                    }
-                    .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(isSelected ? .isSelected : [])
+        let periods = availablePeriods
+        return HStack(spacing: 4) {
+            if periods.contains(.monthly) {
+                periodButton(.monthly)
+            }
+            if periods.contains(.yearly) {
+                periodButton(.yearly)
             }
         }
         .padding(4)
@@ -387,11 +378,47 @@ struct HostedPaywallView: View {
         .disabled(isBusy)
     }
 
+    private func periodButton(_ period: HostedBillingPeriod) -> some View {
+        let isSelected = period == selectedPeriod
+        return Button {
+            withAnimation(.snappy) { selectedPeriod = period }
+        } label: {
+            HStack(spacing: 6) {
+                Text(period.title)
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                if period == .yearly, let savings = yearlySavingsPercent {
+                    Text("Save \(savings)%")
+                        .font(.system(.caption2, design: .rounded, weight: .bold))
+                        .foregroundStyle(isSelected ? Color.white : AppColors.calorie)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            isSelected ? Color.white.opacity(0.22) : AppColors.calorie.opacity(0.12),
+                            in: Capsule()
+                        )
+                }
+            }
+            .foregroundStyle(isSelected ? Color.white : Color.primary)
+            .frame(maxWidth: .infinity)
+            .frame(height: 38)
+            .background {
+                if isSelected {
+                    Capsule()
+                        .fill(AppColors.calorie)
+                        .matchedGeometryEffect(id: "selectedPeriod", in: periodToggleNamespace)
+                }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
     private func planCard(plan: HostedPlan, package: Package) -> some View {
         let isSelected = plan == selectedPlan
         let isCurrent = rc.activePlan == plan
         let product = package.storeProduct
-        let period = BillingPeriod(package: package) ?? selectedPeriod
+        let period = HostedBillingPeriod(package: package) ?? selectedPeriod
         let dailyLimit = HostedAIConstants.dailyLimit(for: plan)
 
         return Button {
@@ -516,7 +543,8 @@ struct HostedPaywallView: View {
     // MARK: - Credit packs
 
     private var creditPacksSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let catalog = self.catalog
+        return VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 sectionTitle("Credit packs")
                 Text("Top up when you run past your daily pool. Credits are one-time purchases and are spent only while a plan is active.")
@@ -525,10 +553,14 @@ struct HostedPaywallView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             VStack(spacing: 0) {
-                ForEach(Array(catalog.creditPacks.enumerated()), id: \.element.storeProduct.productIdentifier) { index, package in
-                    creditRow(package)
-                    if index < catalog.creditPacks.count - 1 {
-                        Divider().padding(.leading, 62)
+                // Rows are keyed on product identifier `String`s. Avoid key
+                // paths into RevenueCat's `Package` / `StoreProduct` here.
+                ForEach(catalog.creditPackIDs, id: \.self) { productID in
+                    if let package = catalog.creditPacks[productID] {
+                        creditRow(package)
+                        if productID != catalog.creditPackIDs.last {
+                            Divider().padding(.leading, 62)
+                        }
                     }
                 }
             }
@@ -599,7 +631,7 @@ struct HostedPaywallView: View {
 
             if let package = selectedPackage {
                 let product = package.storeProduct
-                let period = BillingPeriod(package: package) ?? selectedPeriod
+                let period = HostedBillingPeriod(package: package) ?? selectedPeriod
                 Text("\(product.localizedTitle) · \(product.localizedPriceString) \(period.perUnit). Renews automatically, cancel anytime.")
                     .font(.system(.caption, design: .rounded))
                     .foregroundStyle(.secondary)
@@ -678,9 +710,8 @@ struct HostedPaywallView: View {
     /// Splits the `plus` / `pro` offerings into subscriptions keyed by plan and
     /// period, and a deduplicated list of credit packs (both offerings carry the
     /// same consumables). Rendering is entirely driven by what RevenueCat returns.
-    private var catalog: Catalog {
-        var result = Catalog()
-        var creditsByProduct: [String: Package] = [:]
+    private var catalog: HostedPaywallCatalog {
+        var result = HostedPaywallCatalog()
         for plan in Self.plans {
             guard let packages = rc.offerings?.offering(identifier: plan.rawValue)?.availablePackages else { continue }
             for package in packages {
@@ -688,23 +719,23 @@ struct HostedPaywallView: View {
                 let isSubscription = product.productCategory == .subscription
                     || HostedAIConstants.subscriptionProductIDs.contains(product.productIdentifier)
                 if isSubscription {
-                    if let period = BillingPeriod(package: package) {
+                    if let period = HostedBillingPeriod(package: package) {
                         result.subscriptions[plan, default: [:]][period] = package
                     }
                 } else if HostedAIConstants.creditAmount(for: product.productIdentifier) != nil {
-                    creditsByProduct[product.productIdentifier] = package
+                    result.creditPacks[product.productIdentifier] = package
                 }
             }
         }
-        result.creditPacks = creditsByProduct.values.sorted {
-            (HostedAIConstants.creditAmount(for: $0.storeProduct.productIdentifier) ?? 0)
-                < (HostedAIConstants.creditAmount(for: $1.storeProduct.productIdentifier) ?? 0)
+        result.creditPackIDs = result.creditPacks.keys.sorted {
+            (HostedAIConstants.creditAmount(for: $0) ?? 0) < (HostedAIConstants.creditAmount(for: $1) ?? 0)
         }
         return result
     }
 
-    private var availablePeriods: [BillingPeriod] {
-        BillingPeriod.allCases.filter { period in
+    private var availablePeriods: [HostedBillingPeriod] {
+        let catalog = self.catalog
+        return HostedBillingPeriod.allCases.filter { period in
             Self.plans.contains { catalog.subscriptions[$0]?[period] != nil }
         }
     }
