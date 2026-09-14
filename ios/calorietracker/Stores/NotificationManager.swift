@@ -332,6 +332,95 @@ class NotificationManager {
         }
     }
 
+    // MARK: - Product Hunt Launch (one-shot, absolute time)
+
+    /// Identifier used so the delegate can show the launch banner in the foreground.
+    static let productHuntLaunchNotificationID = "producthunt.launch"
+    static let productHuntLaunchScheduledKey = "productHuntLaunchNotificationScheduled"
+    nonisolated static let productHuntLaunchTimeZone = TimeZone(identifier: "America/Los_Angeles")!
+
+    /// Fud AI goes live on Product Hunt on Sept 22, 2026 at 12:01 AM Pacific.
+    nonisolated static var productHuntLaunchDate: Date {
+        var components = DateComponents()
+        components.year = 2026
+        components.month = 9
+        components.day = 22
+        components.hour = 0
+        components.minute = 1
+        components.timeZone = productHuntLaunchTimeZone
+        return Calendar(identifier: .gregorian).date(from: components)!
+    }
+
+    nonisolated enum ProductHuntLaunchPlan: Equatable {
+        /// Launch day is over — a late reminder would just be noise.
+        case skip
+        /// The user updated during launch day; fire right away so they can still vote.
+        case fireNow
+        case schedule(Date)
+    }
+
+    /// Pure decision so the window logic is testable: fire at launch, fire immediately if we
+    /// are already inside the 24h launch day, and skip entirely once that day has passed.
+    nonisolated static func productHuntLaunchPlan(now: Date, launch: Date = productHuntLaunchDate) -> ProductHuntLaunchPlan {
+        let launchDayEnd = launch.addingTimeInterval(24 * 60 * 60)
+        if now >= launchDayEnd { return .skip }
+        if now >= launch { return .fireNow }
+        return .schedule(launch)
+    }
+
+    /// Arms the one-shot launch reminder exactly once. Re-run on every launch: cheap when the
+    /// flag is set, and retried on later launches while notifications are not yet authorized
+    /// (asks for permission first if the user has never been asked).
+    func scheduleProductHuntLaunchReminderIfNeeded() async {
+        guard !UserDefaults.standard.bool(forKey: Self.productHuntLaunchScheduledKey) else { return }
+
+        let plan = Self.productHuntLaunchPlan(now: .now)
+        if plan == .skip {
+            UserDefaults.standard.set(true, forKey: Self.productHuntLaunchScheduledKey)
+            return
+        }
+
+        let center = UNUserNotificationCenter.current()
+        var settings = await center.notificationSettings()
+        if settings.authorizationStatus == .notDetermined {
+            _ = await requestAuthorization()
+            settings = await center.notificationSettings()
+        }
+        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Fud AI is live on Product Hunt 🚀"
+        content.body = "We just launched! Tap to vote and help more people find Fud AI."
+        content.sound = .default
+        content.userInfo = ["openURL": FudAILinks.productHunt.absoluteString]
+
+        let trigger: UNNotificationTrigger?
+        switch plan {
+        case .schedule(let date):
+            // Only the wall-clock fields plus the launch time zone; extra components
+            // (weekday, nanosecond…) would make the calendar trigger never match.
+            let parts = Calendar(identifier: .gregorian).dateComponents(in: Self.productHuntLaunchTimeZone, from: date)
+            var components = DateComponents()
+            components.timeZone = Self.productHuntLaunchTimeZone
+            components.year = parts.year
+            components.month = parts.month
+            components.day = parts.day
+            components.hour = parts.hour
+            components.minute = parts.minute
+            trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        case .fireNow, .skip:
+            trigger = nil
+        }
+
+        let request = UNNotificationRequest(identifier: Self.productHuntLaunchNotificationID, content: content, trigger: trigger)
+        do {
+            try await center.add(request)
+            UserDefaults.standard.set(true, forKey: Self.productHuntLaunchScheduledKey)
+        } catch {
+            // Best-effort; retried on the next launch.
+        }
+    }
+
     // MARK: - Cancel All
 
     func cancelAllNotifications() {

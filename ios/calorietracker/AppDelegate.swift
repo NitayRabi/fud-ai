@@ -43,19 +43,21 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        if notification.request.identifier == NotificationManager.appUpdateNotificationID {
+        if notification.request.identifier == NotificationManager.appUpdateNotificationID
+            || notification.request.identifier == NotificationManager.productHuntLaunchNotificationID {
             return [.banner, .sound, .list]
         }
         return []
     }
 
-    /// Open the App Store listing when the update notification is tapped.
+    /// Open the App Store listing (update) or the linked page (Product Hunt launch) on tap.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
         let userInfo = response.notification.request.content.userInfo
-        if let urlString = userInfo["updateURL"] as? String, let url = URL(string: urlString) {
+        let urlString = (userInfo["updateURL"] ?? userInfo["openURL"]) as? String
+        if let urlString, let url = URL(string: urlString) {
             await UIApplication.shared.open(url)
         }
     }

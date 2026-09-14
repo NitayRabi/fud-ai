@@ -36,6 +36,7 @@ import com.apoorvdarshan.calorietracker.AppContainer
 import com.apoorvdarshan.calorietracker.services.update.AndroidUpdateChecker
 import com.apoorvdarshan.calorietracker.services.update.AndroidUpdateState
 import com.apoorvdarshan.calorietracker.ui.coach.CoachScreen
+import com.apoorvdarshan.calorietracker.ui.components.PostUpdatePromptsHost
 import com.apoorvdarshan.calorietracker.ui.home.HomeScreen
 import com.apoorvdarshan.calorietracker.ui.onboarding.OnboardingScreen
 import com.apoorvdarshan.calorietracker.ui.progress.BodyMeasurementsScreen
@@ -271,6 +272,9 @@ fun FudAINavHost(
                 }
                 composable(FudAIRoutes.WORKOUTS) { TabInset { WorkoutsScreen(container = container) } }
             }
+            // One-time post-update prompts for existing users; never during (or right after)
+            // a fresh onboarding — those users are marked as "seen" on completion.
+            PostUpdatePromptsHost(container = container, enabled = !startOnboarding)
         }
     }
     }

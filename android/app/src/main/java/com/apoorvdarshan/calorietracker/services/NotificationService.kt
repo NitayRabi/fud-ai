@@ -10,8 +10,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.ComponentName
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.util.Log
 import com.apoorvdarshan.calorietracker.FudAIApp
+import com.apoorvdarshan.calorietracker.data.PreferencesStore
+import com.apoorvdarshan.calorietracker.models.FudAILinks
 import com.apoorvdarshan.calorietracker.services.update.AndroidUpdateChecker
 import android.os.Build
 import androidx.core.app.NotificationCompat
@@ -26,6 +29,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.util.Calendar
 import kotlin.math.roundToInt
 
@@ -92,7 +97,13 @@ class NotificationService(private val context: Context) {
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply { description = context.getString(R.string.notif_channel_water_desc) }
 
-        mgr.createNotificationChannels(listOf(streak, daily, goal, weight, bodyFat, appUpdate, water))
+        val announcements = NotificationChannel(
+            CHANNEL_ANNOUNCEMENTS,
+            context.getString(R.string.notif_channel_announcements),
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply { description = context.getString(R.string.notif_channel_announcements_desc) }
+
+        mgr.createNotificationChannels(listOf(streak, daily, goal, weight, bodyFat, appUpdate, water, announcements))
     }
 
     fun canPostNotifications(): Boolean {
@@ -182,6 +193,69 @@ class NotificationService(private val context: Context) {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
         NotificationManagerCompat.from(context).notifySafely(context, APP_UPDATE_NOTIFICATION_ID, notif)
+    }
+
+    // -- Product Hunt launch (one-shot, absolute time) -------------------
+
+    /**
+     * Arms the one-shot Product Hunt launch reminder exactly once. Safe to call on every
+     * launch: no-op once the flag is set, and retried on later launches while the
+     * notification permission is still missing.
+     *
+     * @return true when the reminder is wanted but POST_NOTIFICATIONS is not granted, so the
+     *   caller can run the permission request and call this again on grant.
+     */
+    suspend fun scheduleProductHuntLaunchReminderIfNeeded(prefs: PreferencesStore): Boolean {
+        if (prefs.productHuntLaunchNotificationScheduled.first()) return false
+        when (val plan = ProductHuntLaunchReminder.plan(System.currentTimeMillis())) {
+            ProductHuntLaunchReminder.Plan.Skip -> {
+                prefs.setProductHuntLaunchNotificationScheduled(true)
+                return false
+            }
+            ProductHuntLaunchReminder.Plan.FireNow -> {
+                if (!canPostNotifications()) return true
+                showProductHuntLaunch()
+            }
+            is ProductHuntLaunchReminder.Plan.ScheduleAt -> {
+                if (!canPostNotifications()) return true
+                scheduleProductHuntLaunch(plan.triggerAtMillis)
+            }
+        }
+        prefs.setProductHuntLaunchNotificationScheduled(true)
+        return false
+    }
+
+    fun scheduleProductHuntLaunch(triggerAtMillis: Long) {
+        val pending = broadcastPendingIntent(
+            REQUEST_PRODUCT_HUNT,
+            ProductHuntLaunchReceiver::class.java,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        ) ?: return
+        val alarm = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pending)
+    }
+
+    /** Post the launch notification now. Tapping it opens the Product Hunt page. */
+    fun showProductHuntLaunch() {
+        val open = PendingIntent.getActivity(
+            context,
+            REQUEST_PRODUCT_HUNT,
+            Intent(Intent.ACTION_VIEW, Uri.parse(FudAILinks.PRODUCT_HUNT)).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val text = context.getString(R.string.notif_product_hunt_text)
+        val notif = NotificationCompat.Builder(context, CHANNEL_ANNOUNCEMENTS)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(context.getString(R.string.notif_product_hunt_title))
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .build()
+        NotificationManagerCompat.from(context).notifySafely(context, PRODUCT_HUNT_NOTIFICATION_ID, notif)
     }
 
     // -- Scheduling ------------------------------------------------------
@@ -304,6 +378,7 @@ class NotificationService(private val context: Context) {
         const val CHANNEL_APP_UPDATE = "app_update"
         const val CHANNEL_WATER = "water_reminder"
         const val CHANNEL_FASTING = "fasting_goal"
+        const val CHANNEL_ANNOUNCEMENTS = "announcements"
         const val EXTRA_CHANNEL = "channel"
         const val EXTRA_TITLE = "title"
         const val EXTRA_TEXT = "text"
@@ -311,6 +386,7 @@ class NotificationService(private val context: Context) {
         const val EXTRA_FASTING_GOAL_MINUTES = "fasting_goal_minutes"
         private const val GOAL_NOTIFICATION_ID = 4242
         private const val APP_UPDATE_NOTIFICATION_ID = 5555
+        private const val PRODUCT_HUNT_NOTIFICATION_ID = 6666
         private const val REQUEST_STREAK = 1001
         private const val REQUEST_DAILY = 1002
         private const val REQUEST_WEIGHT = 1003
@@ -318,6 +394,40 @@ class NotificationService(private val context: Context) {
         private const val REQUEST_APP_UPDATE = 1005
         private const val REQUEST_WATER = 1006
         private const val REQUEST_FASTING = 1007
+        private const val REQUEST_PRODUCT_HUNT = 1008
+    }
+}
+
+/**
+ * When to remind users that Fud AI is live on Product Hunt: at the launch moment
+ * (Sept 22, 2026, 12:01 AM Pacific), immediately if the user updates during launch
+ * day, and never once that day has passed. Pure so the window logic is testable.
+ */
+object ProductHuntLaunchReminder {
+    val LAUNCH_ZONE: ZoneId = ZoneId.of("America/Los_Angeles")
+    val LAUNCH_AT_MILLIS: Long =
+        ZonedDateTime.of(2026, 9, 22, 0, 1, 0, 0, LAUNCH_ZONE).toInstant().toEpochMilli()
+    private const val LAUNCH_DAY_MILLIS = 24L * 60 * 60 * 1000
+
+    sealed interface Plan {
+        /** Launch day is over — a late reminder would just be noise. */
+        data object Skip : Plan
+        /** Already inside launch day; fire right away so the user can still vote. */
+        data object FireNow : Plan
+        data class ScheduleAt(val triggerAtMillis: Long) : Plan
+    }
+
+    fun plan(nowMillis: Long, launchAtMillis: Long = LAUNCH_AT_MILLIS): Plan = when {
+        nowMillis >= launchAtMillis + LAUNCH_DAY_MILLIS -> Plan.Skip
+        nowMillis >= launchAtMillis -> Plan.FireNow
+        else -> Plan.ScheduleAt(launchAtMillis)
+    }
+}
+
+/** Fired by the one-shot Product Hunt launch alarm. */
+class ProductHuntLaunchReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        NotificationService(context).showProductHuntLaunch()
     }
 }
 
@@ -371,6 +481,15 @@ class FastingBootReceiver : BroadcastReceiver() {
                     app.container.notifications.scheduleFastingGoal(app.container.fastingRepository.active())
                 } else {
                     app.container.notifications.cancelFastingGoal()
+                }
+                // Alarms don't survive a reboot: re-arm the one-shot Product Hunt launch
+                // reminder if it was already scheduled and the launch is still ahead.
+                val phPlan = ProductHuntLaunchReminder.plan(System.currentTimeMillis())
+                if (phPlan is ProductHuntLaunchReminder.Plan.ScheduleAt &&
+                    app.container.prefs.productHuntLaunchNotificationScheduled.first() &&
+                    app.container.notifications.canPostNotifications()
+                ) {
+                    app.container.notifications.scheduleProductHuntLaunch(phPlan.triggerAtMillis)
                 }
             } finally {
                 pendingResult.finish()

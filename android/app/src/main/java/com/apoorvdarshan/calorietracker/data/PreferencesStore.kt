@@ -201,8 +201,26 @@ class PreferencesStore(
             ) {
                 prefs[Keys.FOOD_LOG_SORT_ORDER] = "latestMealsFirst"
             }
+            if (value) {
+                // Fresh installs must never see the "existing user" post-update prompts.
+                prefs[Keys.HAS_SEEN_HOSTED_UPSELL_PROMPT] = true
+                prefs[Keys.HAS_SEEN_MEET_DEVELOPER_PROMPT] = true
+            }
             prefs[Keys.ONBOARDING_COMPLETED] = value
         }
+    }
+
+    // -- Post-update prompts (existing users only, one-time) ----------------
+    val hasSeenHostedUpsellPrompt: Flow<Boolean> = ds.data.map { it[Keys.HAS_SEEN_HOSTED_UPSELL_PROMPT] ?: false }
+    suspend fun setHasSeenHostedUpsellPrompt(v: Boolean) { ds.edit { it[Keys.HAS_SEEN_HOSTED_UPSELL_PROMPT] = v } }
+
+    val hasSeenMeetDeveloperPrompt: Flow<Boolean> = ds.data.map { it[Keys.HAS_SEEN_MEET_DEVELOPER_PROMPT] ?: false }
+    suspend fun setHasSeenMeetDeveloperPrompt(v: Boolean) { ds.edit { it[Keys.HAS_SEEN_MEET_DEVELOPER_PROMPT] = v } }
+
+    val productHuntLaunchNotificationScheduled: Flow<Boolean> =
+        ds.data.map { it[Keys.PRODUCT_HUNT_LAUNCH_NOTIFICATION_SCHEDULED] ?: false }
+    suspend fun setProductHuntLaunchNotificationScheduled(v: Boolean) {
+        ds.edit { it[Keys.PRODUCT_HUNT_LAUNCH_NOTIFICATION_SCHEDULED] = v }
     }
 
     // -- Notifications ----------------------------------------------------
@@ -1310,6 +1328,9 @@ class PreferencesStore(
         val HEALTH_ENERGY_GOALS_LAST_AUTO_REFRESH_DAY = stringPreferencesKey("healthEnergyGoalsLastAutoRefreshDay")
         val ADAPTIVE_GOALS_ENABLED = booleanPreferencesKey("adaptiveGoalsEnabled")
         val REVIEW_PROMPTED_AFTER_FIRST_LOG = booleanPreferencesKey("reviewPromptedAfterFirstLog")
+        val HAS_SEEN_HOSTED_UPSELL_PROMPT = booleanPreferencesKey("hasSeenHostedUpsellPrompt")
+        val HAS_SEEN_MEET_DEVELOPER_PROMPT = booleanPreferencesKey("hasSeenMeetDeveloperPrompt")
+        val PRODUCT_HUNT_LAUNCH_NOTIFICATION_SCHEDULED = booleanPreferencesKey("productHuntLaunchNotificationScheduled")
         val ADAPTIVE_GOALS_PREVIOUS_TARGETS = stringPreferencesKey("adaptiveGoalsPreviousTargets")
         val ADAPTIVE_GOALS_LAST_CHECK_DAY = stringPreferencesKey("adaptiveGoalsLastCheckDay")
         val USE_METRIC = booleanPreferencesKey("useMetric")
