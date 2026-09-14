@@ -22,6 +22,7 @@ import com.apoorvdarshan.calorietracker.models.QuickActionRequest
 import com.apoorvdarshan.calorietracker.services.MealShare
 import com.apoorvdarshan.calorietracker.services.QuickActionShortcutManager
 import com.apoorvdarshan.calorietracker.services.ReviewPrompter
+import com.apoorvdarshan.calorietracker.services.update.AndroidUpdateChecker
 import com.apoorvdarshan.calorietracker.ui.home.ImportSharedMealSheet
 import com.apoorvdarshan.calorietracker.ui.navigation.FudAINavHost
 import com.apoorvdarshan.calorietracker.ui.theme.AppThemeColor
@@ -60,11 +61,18 @@ open class MainActivity : ComponentActivity() {
         intent?.action = null
     }
 
+    private fun handlePlayStoreIntent(intent: Intent?) {
+        if (intent?.action != AndroidUpdateChecker.ACTION_OPEN_PLAY_STORE) return
+        AndroidUpdateChecker.openPlayStore(this)
+        intent.action = null
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         handleShareIntent(intent)
         handleQuickActionIntent(intent)
+        handlePlayStoreIntent(intent)
     }
     override fun onStart() {
         super.onStart()
@@ -124,6 +132,7 @@ open class MainActivity : ComponentActivity() {
         // A fudai://add-meal link may have cold-launched us.
         handleShareIntent(intent)
         handleQuickActionIntent(intent)
+        handlePlayStoreIntent(intent)
 
         lifecycleScope.launch {
             combine(
