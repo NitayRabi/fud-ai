@@ -341,7 +341,9 @@ struct HostedPaywallView: View {
 
     private var periodToggle: some View {
         HStack(spacing: 4) {
-            ForEach(availablePeriods) { period in
+            // Explicit id — ForEach(Identifiable) over a nested private enum
+            // crashes Release builds in Swift's key-path metadata (SIGSEGV).
+            ForEach(availablePeriods, id: \.rawValue) { period in
                 let isSelected = period == selectedPeriod
                 Button {
                     withAnimation(.snappy) { selectedPeriod = period }
