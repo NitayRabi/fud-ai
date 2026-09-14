@@ -373,6 +373,9 @@ class NotificationManager {
     /// (asks for permission first if the user has never been asked).
     func scheduleProductHuntLaunchReminderIfNeeded() async {
         guard !UserDefaults.standard.bool(forKey: Self.productHuntLaunchScheduledKey) else { return }
+        // Respect the in-app Notifications master toggle. Leave the scheduled flag clear so
+        // enabling notifications later (before launch day ends) can still arm the reminder.
+        guard UserDefaults.standard.bool(forKey: "notificationsEnabled") else { return }
 
         let plan = Self.productHuntLaunchPlan(now: .now)
         if plan == .skip {
@@ -386,7 +389,13 @@ class NotificationManager {
             _ = await requestAuthorization()
             settings = await center.notificationSettings()
         }
-        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
+        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
+            // Ask once: if the user denied system permission, stop retrying every launch.
+            if settings.authorizationStatus == .denied {
+                UserDefaults.standard.set(true, forKey: Self.productHuntLaunchScheduledKey)
+            }
+            return
+        }
 
         let content = UNMutableNotificationContent()
         content.title = "Fud AI is live on Product Hunt 🚀"

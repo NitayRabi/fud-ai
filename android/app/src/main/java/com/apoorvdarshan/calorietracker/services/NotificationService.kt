@@ -207,6 +207,9 @@ class NotificationService(private val context: Context) {
      */
     suspend fun scheduleProductHuntLaunchReminderIfNeeded(prefs: PreferencesStore): Boolean {
         if (prefs.productHuntLaunchNotificationScheduled.first()) return false
+        // Respect the in-app Notifications master toggle — never ask or arm while opted out.
+        // Leave the scheduled flag clear so enabling notifications later can still arm it.
+        if (!prefs.notificationsEnabled.first()) return false
         when (val plan = ProductHuntLaunchReminder.plan(System.currentTimeMillis())) {
             ProductHuntLaunchReminder.Plan.Skip -> {
                 prefs.setProductHuntLaunchNotificationScheduled(true)
@@ -234,6 +237,8 @@ class NotificationService(private val context: Context) {
         val alarm = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pending)
     }
+
+    fun cancelProductHuntLaunch() = cancel(REQUEST_PRODUCT_HUNT)
 
     /** Post the launch notification now. Tapping it opens the Product Hunt page. */
     fun showProductHuntLaunch() {
@@ -427,7 +432,19 @@ object ProductHuntLaunchReminder {
 /** Fired by the one-shot Product Hunt launch alarm. */
 class ProductHuntLaunchReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        NotificationService(context).showProductHuntLaunch()
+        val pendingResult = goAsync()
+        val app = context.applicationContext as? FudAIApp
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val enabled = app?.container?.prefs?.notificationsEnabled?.first() == true &&
+                    NotificationService(context).canPostNotifications()
+                if (enabled) {
+                    NotificationService(context).showProductHuntLaunch()
+                }
+            } finally {
+                pendingResult.finish()
+            }
+        }
     }
 }
 
@@ -482,14 +499,19 @@ class FastingBootReceiver : BroadcastReceiver() {
                 } else {
                     app.container.notifications.cancelFastingGoal()
                 }
-                // Alarms don't survive a reboot: re-arm the one-shot Product Hunt launch
-                // reminder if it was already scheduled and the launch is still ahead.
-                val phPlan = ProductHuntLaunchReminder.plan(System.currentTimeMillis())
-                if (phPlan is ProductHuntLaunchReminder.Plan.ScheduleAt &&
+                // Alarms don't survive a reboot. If we already intended to remind the user,
+                // re-arm a future ScheduleAt — or fire immediately when boot lands during launch day.
+                val phEnabled = app.container.prefs.notificationsEnabled.first() &&
                     app.container.prefs.productHuntLaunchNotificationScheduled.first() &&
                     app.container.notifications.canPostNotifications()
-                ) {
-                    app.container.notifications.scheduleProductHuntLaunch(phPlan.triggerAtMillis)
+                if (phEnabled) {
+                    when (val phPlan = ProductHuntLaunchReminder.plan(System.currentTimeMillis())) {
+                        is ProductHuntLaunchReminder.Plan.ScheduleAt ->
+                            app.container.notifications.scheduleProductHuntLaunch(phPlan.triggerAtMillis)
+                        ProductHuntLaunchReminder.Plan.FireNow ->
+                            app.container.notifications.showProductHuntLaunch()
+                        ProductHuntLaunchReminder.Plan.Skip -> Unit
+                    }
                 }
             } finally {
                 pendingResult.finish()

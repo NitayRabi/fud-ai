@@ -71,7 +71,14 @@ fun PostUpdatePromptsHost(container: AppContainer, enabled: Boolean) {
     val notificationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) scope.launch { armProductHuntReminder() }
+        scope.launch {
+            if (granted) {
+                armProductHuntReminder()
+            } else {
+                // Ask once: denying means we stop retrying the PH reminder on every launch.
+                prefs.setProductHuntLaunchNotificationScheduled(true)
+            }
+        }
     }
 
     suspend fun finishFlow() {

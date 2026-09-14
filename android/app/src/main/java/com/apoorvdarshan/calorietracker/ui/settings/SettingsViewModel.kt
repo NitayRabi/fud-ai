@@ -1018,6 +1018,7 @@ class SettingsViewModel(val container: AppContainer) : ViewModel() {
             container.notifications.cancelBodyFatReminder()
             container.notifications.cancelWaterReminder()
             container.notifications.cancelFastingGoal()
+            container.notifications.cancelProductHuntLaunch()
             return
         }
 
@@ -1068,6 +1069,9 @@ class SettingsViewModel(val container: AppContainer) : ViewModel() {
         } else {
             container.notifications.cancelFastingGoal()
         }
+
+        // If the user enables notifications before launch day ends, arm the PH reminder.
+        container.notifications.scheduleProductHuntLaunchReminderIfNeeded(container.prefs)
     }
 
     fun setHealthConnectEnabled(v: Boolean) {
