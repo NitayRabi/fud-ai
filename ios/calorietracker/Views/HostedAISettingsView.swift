@@ -882,9 +882,8 @@ struct HostedCreditsSheet: View {
 
 /// Full-width gradient CTA matching the onboarding "Continue" button, shared by
 /// the hosted paywall sheets.
-struct HostedPrimaryButtonStyle: ButtonStyle {
-    // Qualify so this isn't RevenueCat's `Configuration` (this file imports RevenueCat).
-    func makeBody(configuration: ButtonStyle.Configuration) -> some View {
+struct HostedPrimaryButtonStyle: SwiftUI.ButtonStyle {
+    func makeBody(configuration: ButtonStyleConfiguration) -> some View {
         configuration.label
             .font(.system(.body, design: .rounded, weight: .semibold))
             .foregroundStyle(.white)
