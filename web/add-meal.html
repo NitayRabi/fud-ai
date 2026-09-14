@@ -167,14 +167,14 @@
       }).join("");
 
       var title = meals.length === 1 ? "A meal was shared with you" : meals.length + " meals were shared with you";
-      var fudaiLink = "fudai://add-meal?d=" + d;
+      var fudaiLink = "fudai://add-meal?d=" + encodeURIComponent(d);
 
       content.innerHTML =
-        '<h1>' + title + '</h1>' +
+        '<h1>' + esc(title) + '</h1>' +
         '<p class="sub">Add it to your Fud AI log — with the exact nutrients, no re-scanning.</p>' +
         rows +
         (meals.length > 1 ? '<div class="total">' + r(total) + ' kcal total</div>' : "") +
-        '<a class="cta" id="open" href="' + fudaiLink + '">Add to Fud AI</a>' +
+        '<a class="cta" id="open" href="' + esc(fudaiLink) + '">Add to Fud AI</a>' +
         '<p class="note">Opens the app to confirm. Don\'t have Fud AI yet?</p>' +
         storesHtml() +
         '<p class="note">The meal details shown above are contained in this shared URL. <a href="/privacy.html">Privacy</a></p>';

@@ -73,3 +73,14 @@ If you make a good-faith effort to comply with this policy during security resea
 ## Credit
 
 Researchers who responsibly disclose valid vulnerabilities will be credited in the release notes and in the commit message that ships the fix (unless they request to remain anonymous).
+
+## Committed build tooling (supply chain)
+
+The Android Gradle Wrapper ships `android/gradle/wrapper/gradle-wrapper.jar` in-repo so CI and local builds can bootstrap Gradle without a preinstalled copy. That binary is **intentional** and required for Android builds.
+
+Integrity is enforced in CI via:
+
+- `distributionSha256Sum` in `android/gradle/wrapper/gradle-wrapper.properties` (validates the downloaded Gradle distribution)
+- The [`gradle/actions/wrapper-validation`](https://github.com/gradle/actions/tree/main/wrapper-validation) step in `.github/workflows/quality.yml`, which checks the committed wrapper JAR against Gradle’s published checksums
+
+Do not remove the wrapper JAR; treat unexpected changes to it as a supply-chain incident and investigate before merging.

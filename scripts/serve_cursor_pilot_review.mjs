@@ -128,8 +128,9 @@ const server = http.createServer(async (req, res) => {
     });
     res.end(bytes);
   } catch (error) {
+    console.error('Pilot review server error:', error);
     if (!res.headersSent) res.writeHead(503, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' });
-    res.end(String(error.message || error));
+    res.end('Service unavailable');
   }
 });
 

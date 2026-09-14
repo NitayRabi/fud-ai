@@ -1118,9 +1118,7 @@ def main() -> int:
     mode = "validated" if arguments.check else "generated and validated"
     print(
         f"{mode} {len(expected)} legacy SVG pilot assets for {EXERCISE_ID}; "
-        f"viewBox={VIEW_BOX}; frames=0..{FRAME_COUNT - 1}; genders={','.join(GENDERS)}; "
-        f"canonical={SHARED_OUTPUT_DIR.relative_to(REPO_ROOT)}; "
-        f"iOS vector imagesets={len(expected)}"
+        f"frames=0..{FRAME_COUNT - 1}; iOS vector imagesets={len(expected)}"
     )
     return 0
 
