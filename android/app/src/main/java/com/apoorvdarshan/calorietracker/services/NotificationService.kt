@@ -8,8 +8,8 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.ComponentName
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.util.Log
 import com.apoorvdarshan.calorietracker.FudAIApp
 import com.apoorvdarshan.calorietracker.services.update.AndroidUpdateChecker
@@ -130,7 +130,7 @@ class NotificationService(private val context: Context) {
         if (triggerAt <= System.currentTimeMillis()) return
         ensureFastingChannel()
 
-        val intent = Intent(context, FastingGoalReceiver::class.java).apply {
+        val intent = explicitBroadcastIntent(FastingGoalReceiver::class.java) {
             putExtra(EXTRA_FASTING_GOAL_MINUTES, session.goalMinutes)
         }
         val pending = PendingIntent.getBroadcast(
@@ -144,11 +144,9 @@ class NotificationService(private val context: Context) {
     }
 
     fun cancelFastingGoal() {
-        val intent = Intent(context, FastingGoalReceiver::class.java)
-        val pending = PendingIntent.getBroadcast(
-            context,
+        val pending = broadcastPendingIntent(
             REQUEST_FASTING,
-            intent,
+            FastingGoalReceiver::class.java,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_NO_CREATE
         )
         if (pending != null) {
@@ -159,13 +157,7 @@ class NotificationService(private val context: Context) {
     }
 
     fun showGoalReached() {
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val content = PendingIntent.getActivity(
-            context, 0, intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
+        val content = activityPendingIntent(0, MainActivity::class.java)
         val notif = NotificationCompat.Builder(context, CHANNEL_WEIGHT_GOAL)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(context.getString(R.string.notif_goal_weight_title))
@@ -180,18 +172,7 @@ class NotificationService(private val context: Context) {
     /** Post a "new version available" notification. Tapping it opens the Play Store listing
      *  (market:// → web fallback), mirroring the About screen's open-store behavior. */
     fun showUpdateAvailable() {
-        val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse(AndroidUpdateChecker.PLAY_STORE_MARKET_URL)).apply {
-            setPackage("com.android.vending")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
-        }
-        val resolvable = marketIntent.resolveActivity(context.packageManager) != null
-        val intent = if (resolvable) marketIntent else
-            Intent(Intent.ACTION_VIEW, Uri.parse(AndroidUpdateChecker.PLAY_STORE_WEB_URL))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
-        val pi = PendingIntent.getActivity(
-            context, REQUEST_APP_UPDATE, intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
+        val pi = AndroidUpdateChecker.playStoreLaunchPendingIntent(context, REQUEST_APP_UPDATE)
         val notif = NotificationCompat.Builder(context, CHANNEL_APP_UPDATE)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(context.getString(R.string.notif_update_title))
@@ -241,18 +222,53 @@ class NotificationService(private val context: Context) {
     fun cancelBodyFatReminder() = cancel(REQUEST_BODY_FAT)
     fun cancelWaterReminder() = cancel(REQUEST_WATER)
 
+    private fun explicitBroadcastIntent(
+        cls: Class<*>,
+        configure: Intent.() -> Unit = {}
+    ): Intent = Intent(context, cls).apply {
+        component = ComponentName(context, cls)
+        setPackage(context.packageName)
+        configure()
+    }
+
+    private fun broadcastPendingIntent(
+        requestCode: Int,
+        cls: Class<*>,
+        flags: Int,
+        configure: Intent.() -> Unit = {}
+    ): PendingIntent? = PendingIntent.getBroadcast(
+        context,
+        requestCode,
+        explicitBroadcastIntent(cls, configure),
+        flags
+    )
+
+    private fun activityPendingIntent(requestCode: Int, cls: Class<*>): PendingIntent {
+        val intent = Intent(context, cls).apply {
+            component = ComponentName(context, cls)
+            setPackage(context.packageName)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        return PendingIntent.getActivity(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+    }
+
     private fun schedule(requestCode: Int, hour: Int, minute: Int, channel: String, title: String, text: String) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(context, ReminderReceiver::class.java).apply {
+        val pi = broadcastPendingIntent(
+            requestCode,
+            ReminderReceiver::class.java,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        ) {
             putExtra(EXTRA_CHANNEL, channel)
             putExtra(EXTRA_TITLE, title)
             putExtra(EXTRA_TEXT, text)
             putExtra(EXTRA_REQUEST, requestCode)
-        }
-        val pi = PendingIntent.getBroadcast(
-            context, requestCode, intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
+        } ?: return
 
         val now = Calendar.getInstance()
         val fire = (now.clone() as Calendar).apply {
@@ -268,9 +284,9 @@ class NotificationService(private val context: Context) {
 
     private fun cancel(requestCode: Int) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(context, ReminderReceiver::class.java)
-        val pi = PendingIntent.getBroadcast(
-            context, requestCode, intent,
+        val pi = broadcastPendingIntent(
+            requestCode,
+            ReminderReceiver::class.java,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_NO_CREATE
         )
         if (pi != null) {
@@ -312,12 +328,15 @@ class FastingGoalReceiver : BroadcastReceiver() {
             NotificationService.EXTRA_FASTING_GOAL_MINUTES,
             16 * 60
         )
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            component = ComponentName(context, MainActivity::class.java)
+            setPackage(context.packageName)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
         val open = PendingIntent.getActivity(
             context,
             0,
-            Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            },
+            openIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
         val text = context.getString(
@@ -481,11 +500,15 @@ class ReminderReceiver : BroadcastReceiver() {
         text: String,
         request: Int
     ) {
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            component = ComponentName(context, MainActivity::class.java)
+            setPackage(context.packageName)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
         val open = PendingIntent.getActivity(
-            context, 0,
-            Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            },
+            context,
+            0,
+            openIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
@@ -503,7 +526,11 @@ class ReminderReceiver : BroadcastReceiver() {
     private fun rearm(context: Context, intent: Intent, request: Int) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val nextFire = System.currentTimeMillis() + 24L * 60 * 60 * 1000
-        val reIntent = Intent(context, ReminderReceiver::class.java).apply { putExtras(intent) }
+        val reIntent = Intent(context, ReminderReceiver::class.java).apply {
+            component = ComponentName(context, ReminderReceiver::class.java)
+            setPackage(context.packageName)
+            putExtras(intent)
+        }
         val pi = PendingIntent.getBroadcast(
             context, request, reIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT

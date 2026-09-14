@@ -160,7 +160,7 @@ jobs:
         env:
           STORE_UPLOAD_SCREENSHOTS: "true"
         run: |
-          python3 -m pip install --disable-pip-version-check -r requirements-store.txt
+          python3 -m pip install --disable-pip-version-check --require-hashes -r requirements-store.txt
           python3 scripts/store/stage_screenshots.py
 
       - name: Play listing / screenshots upload (gated)
@@ -172,7 +172,7 @@ jobs:
           UPLOAD_SCREENSHOTS: ${{ steps.gates.outputs.upload_screenshots }}
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
-          python3 -m pip install --disable-pip-version-check -r requirements-store.txt
+          python3 -m pip install --disable-pip-version-check --require-hashes -r requirements-store.txt
           python3 scripts/store/play_listing.py --metadata-dir "$RUNNER_TEMP/store-meta"
 
       - name: Play listing / screenshots upload (skipped)

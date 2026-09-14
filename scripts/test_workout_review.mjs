@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 const html=fs.readFileSync(new URL('./workout_review.html',import.meta.url),'utf8');
-const source=html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/refresh\(\);clock\(\);watchResults\(\);\s*$/,'');
+const source=html.match(/<script>([\s\S]*?)<\/script>/i)[1].replace(/refresh\(\);clock\(\);watchResults\(\);\s*$/,'');
 function harness(){
  const jobs=[],timers=new Map(),listeners={};let tid=0;
  class Element{constructor(){this.children=[];this.value='';}append(...a){this.children.push(...a)}replaceChildren(...a){this.children=a}removeAttribute(k){delete this[k]}click(){}}

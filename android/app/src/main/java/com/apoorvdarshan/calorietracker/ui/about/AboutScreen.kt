@@ -425,20 +425,7 @@ fun AboutFooter() {
     }
 }
 
-private fun openPlayStore(context: Context) {
-    val marketIntent = Intent(
-        Intent.ACTION_VIEW,
-        Uri.parse(AndroidUpdateChecker.PLAY_STORE_MARKET_URL)
-    ).apply {
-        setPackage("com.android.vending")
-        addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
-    }
-    runCatching { context.startActivity(marketIntent) }.onFailure {
-        context.startActivity(
-            Intent(Intent.ACTION_VIEW, Uri.parse(AndroidUpdateChecker.PLAY_STORE_WEB_URL))
-        )
-    }
-}
+private fun openPlayStore(context: Context) = AndroidUpdateChecker.openPlayStore(context)
 
 @Composable
 private fun UpdateRow(
