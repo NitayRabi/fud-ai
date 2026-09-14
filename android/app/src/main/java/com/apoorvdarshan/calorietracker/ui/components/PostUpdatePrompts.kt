@@ -47,23 +47,18 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-private enum class PostUpdatePrompt { HOSTED_UPSELL, HOSTED_ANDROID_NOTE, MEET_DEVELOPER }
-
 /**
  * One-time prompts for *existing* users the first time they open the app after
- * updating (iOS parity). Sequence: hosted-AI choice → meet the developer → arm the
- * Product Hunt launch reminder. Never stacks dialogs; each step advances from the
- * previous one's dismiss. Fresh installs never qualify — onboarding completion
- * marks every prompt as seen (see PreferencesStore.setOnboardingCompleted).
- *
- * Hosted billing is iPhone-first, so the Android CTA opens an honest "coming to
- * Android; BYOK stays free" note instead of a store flow.
+ * updating. Android shows Meet the developer, then arms the Product Hunt launch
+ * reminder. Hosted Plus/Pro upsell stays iOS-only (billing is iPhone-first).
+ * Fresh installs never qualify — onboarding marks prompts as seen
+ * (see PreferencesStore.setOnboardingCompleted).
  */
 @Composable
 fun PostUpdatePromptsHost(container: AppContainer, enabled: Boolean) {
     val prefs = container.prefs
     val scope = rememberCoroutineScope()
-    var prompt by remember { mutableStateOf<PostUpdatePrompt?>(null) }
+    var showMeetDeveloper by remember { mutableStateOf(false) }
 
     suspend fun armProductHuntReminder(): Boolean =
         container.notifications.scheduleProductHuntLaunchReminderIfNeeded(prefs)
@@ -95,7 +90,7 @@ fun PostUpdatePromptsHost(container: AppContainer, enabled: Boolean) {
         }
         delay(delayMillis)
         prefs.setHasSeenMeetDeveloperPrompt(true)
-        prompt = PostUpdatePrompt.MEET_DEVELOPER
+        showMeetDeveloper = true
     }
 
     LaunchedEffect(enabled) {
@@ -103,76 +98,20 @@ fun PostUpdatePromptsHost(container: AppContainer, enabled: Boolean) {
         // Let the first frame settle before interrupting.
         delay(2_500)
         if (!prefs.hasCompletedOnboarding.first()) return@LaunchedEffect
+        // Hosted Plus/Pro billing is iPhone-first — don't show a paywall-style upsell on
+        // Android (every user is BYOK today). Mark it seen so we never replay it later.
         if (!prefs.hasSeenHostedUpsellPrompt.first()) {
             prefs.setHasSeenHostedUpsellPrompt(true)
-            prompt = PostUpdatePrompt.HOSTED_UPSELL
-            return@LaunchedEffect
         }
         continueToMeetDeveloper(delayMillis = 0)
     }
 
-    when (prompt) {
-        PostUpdatePrompt.HOSTED_UPSELL -> HostedUpsellDialog(
-            onLearnMore = { prompt = PostUpdatePrompt.HOSTED_ANDROID_NOTE },
-            onKeepByok = {
-                prompt = null
-                scope.launch { continueToMeetDeveloper(delayMillis = 1_000) }
-            }
-        )
-        PostUpdatePrompt.HOSTED_ANDROID_NOTE -> HostedAndroidNoteDialog(
+    if (showMeetDeveloper) {
+        MeetDeveloperDialog(
             onDismiss = {
-                prompt = null
-                scope.launch { continueToMeetDeveloper(delayMillis = 1_000) }
-            }
-        )
-        PostUpdatePrompt.MEET_DEVELOPER -> MeetDeveloperDialog(
-            onDismiss = {
-                prompt = null
+                showMeetDeveloper = false
                 scope.launch { finishFlow() }
             }
-        )
-        null -> Unit
-    }
-}
-
-@Composable
-private fun HostedUpsellDialog(onLearnMore: () -> Unit, onKeepByok: () -> Unit) {
-    FudGlassDialog(onDismissRequest = onKeepByok) {
-        Text(
-            text = stringResource(R.string.post_update_hosted_title),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = stringResource(R.string.post_update_hosted_body),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-        )
-        FudGlassDialogActions(
-            primaryText = stringResource(R.string.post_update_hosted_cta),
-            onPrimary = onLearnMore,
-            dismissText = stringResource(R.string.post_update_hosted_keep_byok),
-            onDismiss = onKeepByok
-        )
-    }
-}
-
-@Composable
-private fun HostedAndroidNoteDialog(onDismiss: () -> Unit) {
-    FudGlassDialog(onDismissRequest = onDismiss) {
-        Text(
-            text = stringResource(R.string.post_update_hosted_android_title),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = stringResource(R.string.post_update_hosted_android_body),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-        )
-        FudGlassDialogActions(
-            primaryText = stringResource(R.string.post_update_hosted_android_got_it),
-            onPrimary = onDismiss
         )
     }
 }
