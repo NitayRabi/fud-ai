@@ -50,7 +50,11 @@ def first_fence_after(text: str, heading: str) -> str:
 def write_capped(path: Path, content: str, field: str, cap: int) -> None:
     text = content.strip()
     if len(text) > cap:
-        fail(f"{field} is {len(text)} chars (max {cap}): {path.relative_to(ROOT)}")
+        try:
+            shown = path.relative_to(ROOT)
+        except ValueError:
+            shown = path
+        fail(f"{field} is {len(text)} chars (max {cap}): {shown}")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text + "\n", encoding="utf-8")
 

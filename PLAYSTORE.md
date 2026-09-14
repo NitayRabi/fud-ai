@@ -38,9 +38,9 @@ Snap, speak, or type a meal. AI logs the calories. Open source.
 ```
 Fud AI makes calorie tracking effortless with AI-powered food recognition. Snap a photo, scan a barcode, speak it, or type it — get instant nutrition: calories, protein, carbs, fats, vitamins, minerals, and more.
 
-NEW in v7.0: daily steps and a burn/deficit line on Home; Adaptive Goals on by default; Walk/Run quick log; custom exercises with set autofill and lift history; set meal date and time on review; configure Home + actions; pinch-zoom meal photos with optional save-to-gallery; Czech and Ukrainian join 18 supported languages.
+NEW in v7.0: daily steps and burn/deficit on Home; Adaptive Goals on by default; Walk/Run quick log; custom exercises with set autofill; meal date/time on review; configurable Home + actions; pinch-zoom photos with optional gallery save; Czech and Ukrainian (18 languages).
 
-Nutrition adds custom goals, caffeine, creatine, beta-alanine, L-citrulline, L-carnitine, L-arginine, taurine, betaine, and HMB. Optional fasting adds persistent timers, editable history, goals, alerts, and Coach context. Android adds a measured daily calorie summary and clearer Health Connect guidance.
+Nutrition adds custom goals plus caffeine, creatine, and other performance compounds. Optional fasting adds timers, editable history, goals, alerts, and Coach context. Android includes a daily calorie summary and clearer Health Connect guidance.
 
 Open source, privacy-first. Bring your own API key.
 
@@ -67,7 +67,7 @@ REVIEW BEFORE LOGGING
 Unlock Nutrition to correct calories, macros, and detailed nutrients before saving; serving changes then scale from your edits. What if? previews today's macro impact and can ask AI for a suggestion.
 
 WORKOUTS
-Plan by day; log sets, reps, weight, and RPE. Create custom exercises, autofill sets from lift history, and quick-log Walk/Run. Browse 873 exercises with photos, filters, smarter search, sorting, and details.
+Plan by day; log sets, reps, weight, and RPE. Create custom exercises, autofill sets, and quick-log Walk/Run. Browse 873 exercises with photos, filters, search, sorting, and details.
 
 PERSONALIZED GOALS
 BMR and TDEE calculators, six activity levels, automatic or editable macro targets, and customizable meal-time boundaries.
@@ -88,7 +88,7 @@ Off by default. Choose a 1–168 hour goal, start/end/cancel from Home +, keep t
 Auto-selected by phone language: English, Spanish, French, German, Italian, Portuguese (BR), Dutch, Russian, Japanese, Korean, Chinese, Hindi, Arabic, Romanian, Azerbaijani, Polish, Czech, Ukrainian.
 
 PRIVACY FIRST
-Core tracking needs no account; no analytics, behavioral tracking, or ads. The optional 18+ Weekly Challenge uploads only a display name, optional social handle, anonymous ID, and weekly aggregate milestones—never raw food, weight, meals, workouts, or Health Connect records. Android backup may apply under system settings. Keys encrypted; AI/STT requests go to your provider. MIT licensed.
+Core tracking needs no account; no analytics, behavioral tracking, or ads. The optional 18+ Weekly Challenge uploads only a display name, optional social handle, anonymous ID, and weekly aggregate milestones—never raw food, weight, meals, workouts, or Health Connect records. Keys encrypted; AI/STT requests go to your provider. MIT licensed.
 
 HEALTH CONNECT
 Optional sync for nutrition, weight, body fat, and calculated workout calories, plus energy and daily step reads for Home and goal estimates. Records can restore after reinstall. Fasting is local-only.
