@@ -4,4 +4,4 @@ numpy==2.5.3
 scipy==1.18.1
 opencv-python-headless==5.0.0.93
 rembg==2.0.84
-onnxruntime==1.29.0
+onnxruntime==1.30.0
