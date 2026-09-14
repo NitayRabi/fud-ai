@@ -273,13 +273,19 @@ struct ContentView: View {
         }
 
         if !PostUpdatePrompts.hasSeenHostedUpsell {
-            // Customer info may still be loading at launch; refresh before deciding.
-            await RevenueCatManager.shared.refreshCustomerInfo()
-            PostUpdatePrompts.hasSeenHostedUpsell = true
+            // Don't treat a failed refresh as "no entitlement" — that would upsell a
+            // paid BYOK subscriber and permanently consume the one-time prompt.
+            let refreshed = await RevenueCatManager.shared.refreshCustomerInfo()
+            guard refreshed else {
+                continueToMeetDeveloperPrompt(delay: 0)
+                return
+            }
             if PostUpdatePrompts.isHostedUpsellEligible {
+                PostUpdatePrompts.hasSeenHostedUpsell = true
                 showHostedUpsellPrompt = true
                 return
             }
+            PostUpdatePrompts.hasSeenHostedUpsell = true
         }
         continueToMeetDeveloperPrompt(delay: 0)
     }
