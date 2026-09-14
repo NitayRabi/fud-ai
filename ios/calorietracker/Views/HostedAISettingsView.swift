@@ -230,6 +230,13 @@ struct HostedPaywallView: View {
                 if rc.activePlan == .plus {
                     selectedPlan = .pro
                 }
+                reconcileSelection()
+            }
+            .onChange(of: selectedPeriod) { _, _ in
+                reconcileSelection()
+            }
+            .onChange(of: rc.offerings) { _, _ in
+                reconcileSelection()
             }
             .alert("Purchase", isPresented: Binding(
                 get: { errorMessage != nil },
@@ -343,7 +350,7 @@ struct HostedPaywallView: View {
                         Text(period.title)
                             .font(.system(.subheadline, design: .rounded, weight: .semibold))
                         if period == .yearly, let savings = yearlySavingsPercent {
-                            Text("Save \(savings.formatted(.percent))")
+                            Text("Save \(savings)%")
                                 .font(.system(.caption2, design: .rounded, weight: .bold))
                                 .foregroundStyle(isSelected ? Color.white : AppColors.calorie)
                                 .padding(.horizontal, 6)
@@ -468,8 +475,8 @@ struct HostedPaywallView: View {
                 )
                 featureRow(
                     icon: "lock.shield.fill",
-                    title: String(localized: "Private by default"),
-                    detail: String(localized: "Your food log and history stay on this device. Cancel anytime in the App Store.")
+                    title: String(localized: "Only your request is sent"),
+                    detail: String(localized: "Each photo, voice note, or message you send is processed through Fud AI's hosted service. Your diary and history are stored on this device. Cancel anytime in the App Store.")
                 )
             }
             .padding(16)
@@ -700,17 +707,35 @@ struct HostedPaywallView: View {
         }
     }
 
-    /// The package shown on a plan card for the selected period, falling back to
-    /// whatever period that plan does offer so a partially configured offering
-    /// still renders.
+    /// The package shown on a plan card for the selected period only. A plan
+    /// that doesn't offer the selected period gets no card, so the toggle, the
+    /// displayed price and the purchased product always share one term.
     private func package(for plan: HostedPlan) -> Package? {
-        guard let byPeriod = catalog.subscriptions[plan] else { return nil }
-        if let exact = byPeriod[selectedPeriod] { return exact }
-        return BillingPeriod.allCases.lazy.compactMap { byPeriod[$0] }.first
+        catalog.subscriptions[plan]?[selectedPeriod]
+    }
+
+    /// Plans that render a card for the selected period, in display order.
+    private var visiblePlans: [HostedPlan] {
+        Self.plans.filter { package(for: $0) != nil }
     }
 
     private var selectedPackage: Package? {
         package(for: selectedPlan)
+    }
+
+    /// Keeps the selection purchasable: snap the period to one the catalog
+    /// offers, then make sure the selected plan has a visible card for it.
+    /// Prefers a plan the user isn't already on so the CTA is never a no-op.
+    private func reconcileSelection() {
+        let periods = availablePeriods
+        if !periods.isEmpty, !periods.contains(selectedPeriod) {
+            selectedPeriod = periods.contains(.yearly) ? .yearly : periods[0]
+        }
+        guard package(for: selectedPlan) == nil else { return }
+        let candidates = visiblePlans
+        if let plan = candidates.first(where: { $0 != rc.activePlan }) ?? candidates.first {
+            selectedPlan = plan
+        }
     }
 
     private var ctaTitle: String {
