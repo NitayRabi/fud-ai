@@ -236,7 +236,7 @@ class NotificationService(private val context: Context) {
         cls: Class<*>,
         flags: Int,
         configure: Intent.() -> Unit = {}
-    ): PendingIntent = PendingIntent.getBroadcast(
+    ): PendingIntent? = PendingIntent.getBroadcast(
         context,
         requestCode,
         explicitBroadcastIntent(cls, configure),
@@ -268,7 +268,7 @@ class NotificationService(private val context: Context) {
             putExtra(EXTRA_TITLE, title)
             putExtra(EXTRA_TEXT, text)
             putExtra(EXTRA_REQUEST, requestCode)
-        }
+        } ?: return
 
         val now = Calendar.getInstance()
         val fire = (now.clone() as Calendar).apply {
