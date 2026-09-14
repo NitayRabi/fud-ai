@@ -1,6 +1,6 @@
 # App Store Listing
 
-App Store Connect submission details for Fud AI v6.1 build 34. Each field is in a code block for easy copy-paste.
+App Store Connect submission details for Fud AI v7.0 build 35. Each field is in a code block for easy copy-paste.
 
 ## App Name
 ```
@@ -14,7 +14,7 @@ Macros, AI Coach & Workouts
 
 ## Promotional Text (170 chars max)
 ```
-New in 6.1: smarter multi-photo meals, serving calculator, nutrient goals, fasting, chart inspection, diary import, shortcuts, and Watch water logging.
+New in 7.0: optional Plus/Pro hosted AI, daily steps, Walk/Run logging, custom exercises, meal date/time, Log Food widget, Czech & Ukrainian.
 ```
 
 ## Keywords (100 chars max)
@@ -32,17 +32,17 @@ Secondary: Food & Drink
 ```
 Effortless calorie tracking with AI-powered food recognition. Snap, scan, speak, or type a meal — get instant calories, macros, and nutrients.
 
-NEW in v6.1: progressive multi-photo analysis follows ingredients on the same plate; meals include editable ingredient breakdowns; serving fields include a quick calculator. Import Fud AI diary JSON, configure Home Screen quick actions, inspect weight charts, and preview exercises.
+NEW in v7.0: optional Plus/Pro hosted AI or Bring Your Own Key; daily steps and burn/deficit on Home; Walk/Run logging; custom exercises with set autofill; meal date/time on review; configurable Home + and Log Food widget; pinch-zoom photos; Czech and Ukrainian (18 languages).
 
-Nutrition tracking includes custom goals, caffeine, creatine, beta-alanine, L-citrulline, L-carnitine, L-arginine, taurine, betaine, and HMB. Optional fasting adds persistent timers, editable history, custom goals, local alerts, and Coach context. Apple Watch can log water directly.
+Nutrition includes custom goals plus caffeine, creatine, and other performance compounds. Optional fasting adds timers, editable history, goals, alerts, and Coach context. Apple Watch can log water; import Watch workouts from HealthKit when Health is enabled.
 
-Fud AI is free, open source, privacy-first, and bring-your-own-key. There are no ads; optional tips support development.
+Free, open source, privacy-first. BYOK stays free forever; optional Plus/Pro hosted AI is iOS convenience only. No ads; optional tips support development.
 
 LOG MEALS
-Use Camera or Photos (up to 10 images and a note), Barcode, Voice, Text, Manual Entry, Saved Meals, Copy from Day, or Siri shortcuts.
+Use Camera or Photos (up to 10 images and a note), Barcode, Voice, Text, Manual Entry, Saved Meals, Copy from Day, Siri, or the Log Food widget. Choose which food actions appear in Home +.
 
 AI ACCESS
-Bring Your Own Key supports Gemini, OpenAI, Claude, Grok, Groq, OpenRouter, Together AI, Hugging Face, Fireworks AI, DeepInfra, Mistral, Ollama, or any OpenAI-compatible endpoint. Keys stay in iOS Keychain.
+Bring Your Own Key supports Gemini, OpenAI, Claude, Grok, Groq, OpenRouter, Together AI, Hugging Face, Fireworks AI, DeepInfra, Mistral, Ollama, or any OpenAI-compatible endpoint. Keys stay in iOS Keychain. Optional Plus/Pro hosted AI is available without your own key.
 
 6 SPEECH-TO-TEXT OPTIONS
 Native iOS, Gemini Audio, OpenAI Whisper, Groq, Deepgram, and AssemblyAI, with selectable language handling.
@@ -54,7 +54,7 @@ COACH
 Multi-turn chat can access your profile, targets, forecast, food log, workouts, and explicitly logged fasts when requested. It never assumes a missing meal means you fasted.
 
 WORKOUTS
-Plan by day and log sets, reps, weight, and RPE without a timer. Swipe weeks, estimate calorie burn, and review history in Progress. The 873-exercise photo library includes muscle/equipment filters, search, sorting, and details.
+Plan by day and log sets, reps, weight, and RPE without a timer. Create custom exercises, autofill sets from lift history, and quick-log Walk/Run. The 873-exercise library includes filters, search, sorting, and details.
 
 EXPANDED NUTRIENTS
 Track macros plus fiber, sugar, fats, sodium, minerals, vitamins, folate, omega-3, and more when available.
@@ -63,19 +63,19 @@ PERSONALIZED GOALS
 BMR and TDEE calculators, six activity levels, automatic or editable macros, nutrient goals, meal-time boundaries, and Adaptive Goals.
 
 WIDGETS
-Home Screen Fud AI widgets in Small, Medium, and Large; a Protein widget; a Water widget for Home and Lock Screen; and calorie/macro Lock Screen widgets. Apple Watch and complications show calories and macros, plus water when enabled.
+Home Screen Fud AI widgets in Small, Medium, and Large; Protein and Water widgets; calorie/macro Lock Screen widgets; Log Food widget. Apple Watch shows calories, macros, and water when enabled.
 
 OPTIONAL WATER TRACKING
-Off by default. Set a daily goal, quick-log glasses or a custom amount, view progress under calories, schedule a reminder, and use the Water widget. Water stays on-device and is not written to Apple Health.
+Off by default. Set a daily goal, quick-log glasses or a custom amount, schedule a reminder, and use the Water widget. Water stays on-device and is not written to Apple Health.
 
 OPTIONAL FASTING TRACKING
 Off by default. Choose a 1–168 hour goal, start/end/cancel from Home +, keep the timer across restarts, optional local alerts, and edit completed sessions. Fasting stays on-device and is not written to Apple Health.
 
 PRIVACY
-No account, analytics, behavioral tracking, or ads. BYOK keys stay in Keychain. The optional 18+ Weekly Challenge sends a display name, at most one X or Instagram handle, and seven-day aggregate habit scores—never raw food, water, workout, Health, or weight records. Apple Intelligence can process eligible descriptions on-device. Barcode sends only its number to Open Food Facts. MIT licensed.
+No account, analytics, behavioral tracking, or ads. BYOK keys stay in Keychain. The optional 18+ Weekly Challenge sends a display name, at most one X or Instagram handle, and seven-day aggregate habit scores—never raw food, water, workout, Health, or weight records. Hosted AI (if used) sends only the request content through Fud’s proxy. MIT licensed.
 
 APPLE HEALTH
-Optional sync for nutrition, weight, height, body fat, and calculated workout calories. External samples can auto-import or restore after reinstall. Energy Burn Goals can use active/total energy. Fasting is local-only. Permissions remain manageable in Health.
+Optional sync for nutrition, weight, height, body fat, and calculated workout calories. Daily steps can appear on Home. External samples can auto-import. Apple Watch workouts can import as read-only history. Energy Burn Goals can use active/total energy. Fasting is local-only.
 
 Fud AI is not medical advice — consult a healthcare professional before significant diet changes.
 
@@ -85,28 +85,25 @@ Source: https://github.com/apoorvdarshan/fud-ai
 
 ```
 
-## What's New (v6.1)
+## What's New (v7.0)
 ```
-Fud AI 6.1 adds smarter meal review, deeper nutrient tracking, faster editing, and new progress tools.
+Fud AI 7.0 brings optional hosted AI on iPhone, richer workouts and Health insights, and two new languages.
 
 NEW
-• Progressive Meal mode follows ingredients added across up to 10 photos of the same plate.
-• AI meals now include editable ingredient breakdowns, and Manual Entry includes fiber.
-• Calculate serving amounts with +, −, ×, and ÷ directly from the quantity keyboard.
-• Set custom goals for expanded nutrients, including caffeine and performance compounds such as creatine, beta-alanine, citrulline, carnitine, arginine, taurine, betaine, and HMB.
-• Inspect exact weight values by dragging across the graph, with smoother long-range performance.
-• Preview an exercise before adding it; two cable forearm movements have joined the library.
-• Import a previously exported Fud AI food-diary JSON file with duplicate protection.
-• Choose which logging actions appear in Home Screen quick actions.
-• Log water directly from Apple Watch.
-• Optional fasting includes a persistent timer, custom 1–168 hour goal, editable history, local goal alert, and explicit AI Coach context.
+• Choose Bring Your Own Key or optional Plus/Pro hosted AI during onboarding. Hosted uses a daily action pool plus credit packs; free forever stays fully usable with your own keys.
+• See daily steps from Apple Health on Home, plus a clearer burn/deficit line. Adaptive Goals is on by default for new setups.
+• Import Apple Watch workouts from HealthKit into Workouts and Progress.
+• Log Walk/Run from the Workouts menu; create custom exercises; smarter search; set autofill from lift history with Coach-aware training context.
+• Set meal log date and time on the review sheet; configure which actions appear in Home +; add the Log Food widget.
+• Pinch-zoom meal photos and optionally save them to Photos after a successful log.
+• Czech and Ukrainian join the app — 18 languages.
+• Optional iCloud backup gains clearer restore guidance alongside Google Drive on Android.
 
 IMPROVED
-• Reduced unnecessary follow-up AI requests when serving units are already usable.
-• Number-pad Done controls and keyboard dismissal are now reliable across meal editing screens.
-• Meal-photo sheets, analysis notes, toolbar styling, and quick-action routing were refined.
-• Fasting remains separate from calories, macros, and Apple Health.
-• Reliability, privacy-documentation, and dependency security updates.
+• Faster Workouts open and smoother meal and Coach photo thumbnails.
+• More reliable Health writes, diary safety guards, and exercise demos that load on demand.
+• Community links for Discord and Instagram in Settings.
+• Reliability, privacy-documentation, and security updates.
 
 Existing logs, goals, Health data, widgets, workout history, and BYOK settings are preserved during a normal update.
 ```
@@ -171,14 +168,15 @@ Free forever = full app + BYOK. Hosted AI is optional on iOS; no free hosted quo
 1) iPhone only — not optimized for iPad. Please review on iPhone.
 2) There is no conventional user account or sign-in — the app is privacy-first and local-first. AI features use a "bring your own key" (BYOK) provider key. For review, a working Google Gemini API key is provided in App Review Information (entered in the Sign-In password field). To enable all AI features: on the "Set Up Your AI" onboarding step (or Settings → AI Access), Provider = Google Gemini, Model = gemini-3.5-flash-lite (the default), paste the provided key into API Key, then Accept & Continue.
 3) With the key set, all AI features work immediately — Camera/Photos multi-image analysis, Text/Voice logging, "What if?" preview, and AI Coach chat. Logging any meal fills the food log, Home dashboard, and Progress charts; no account or Fud AI server data is needed. (A free Gemini key can also be created at https://aistudio.google.com/apikey.)
-4) The Fud AI Premium subscription from v4.4 has been removed in this version. The app is fully free; no paywall exists.
-5) In-app purchases are 4 optional consumable tips (Settings → About → Tip Jar). They unlock nothing — voluntary support only:
+4) The legacy Fud AI Premium subscription from v4.4 remains discontinued. Core tracking is free forever with Bring Your Own Key — there is no required paywall.
+5) Optional monetization on iOS (StoreKit via RevenueCat; sandbox testing available):
+   Tip Jar (consumables; unlock nothing):
    • com.apoorvdarshan.calorietracker.tip.snack — $0.99
    • com.apoorvdarshan.calorietracker.tip.proteinshake — $2.99
    • com.apoorvdarshan.calorietracker.tip.lunch — $4.99
    • com.apoorvdarshan.calorietracker.tip.feast — $9.99
-   Purchases go through StoreKit via RevenueCat, so App Store sandbox purchase testing is available.
-6) The app shows no ads and does not request tracking. In-app purchases are the 4 optional consumable tips above; nothing else is monetized.
+   Optional Plus/Pro hosted AI subscriptions and credit packs (Settings → AI Access / onboarding Hosted path). Free users stay on BYOK with no hosted quota. Product IDs are listed under “v7 Hosted AI products” above.
+6) The app shows no ads and does not request tracking.
 7) To review intermittent fasting: Settings → Fasting Tracking, enable it, choose a goal, then use Home → + → Start Fast. It is local-only, does not modify nutrition totals, and can be ended or cancelled at any time.
 8) To review the optional Weekly Challenge: Progress → Weekly Challenge. Before enrollment, no leaderboard data is fetched. Enrollment requires explicit 18+ and Community Rules confirmations, a 2–40 character public display name, and optionally exactly one X or Instagram handle. The disclosure shows the exact weekly aggregate payload. Joined users can report or locally block every other participant and manage blocked participants. “Leave & Delete Remote Data” deletes the public profile and scores; Settings → Delete All Data also attempts remote deletion first and safely retries after a connection failure. No date of birth or raw health/food/workout records are uploaded.
 ```

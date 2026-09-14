@@ -16,7 +16,7 @@
   <img src="https://img.shields.io/badge/kotlin-2.2-7F52FF?logo=kotlin" alt="Kotlin">
   <img src="https://img.shields.io/badge/UI-SwiftUI%20%2F%20Compose-purple" alt="UI">
   <img src="https://img.shields.io/badge/privacy-local--first-brightgreen" alt="Local-first privacy">
-  <img src="https://img.shields.io/badge/languages-iOS%2017%20%2F%20Android%2017-blue" alt="iOS 17 languages / Android 17 languages">
+  <img src="https://img.shields.io/badge/languages-iOS%2018%20%2F%20Android%2018-blue" alt="iOS 18 languages / Android 18 languages">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <a href="#credits"><img src="docs/assets/code-reviews.svg" alt="Code reviews by Qodo, GitHub Copilot, CodeRabbit, and Greptile"></a>
   <a href="https://www.bestpractices.dev/projects/14553"><img src="https://www.bestpractices.dev/projects/14553/badge" alt="OpenSSF Best Practices Passing"></a>
@@ -29,11 +29,11 @@
 
 ---
 
-Open-source, privacy-first calorie tracker for iOS and Android. Bring your own AI provider — 13 supported including Gemini, OpenAI, Claude, Grok, Groq, Hugging Face, Fireworks AI, DeepInfra, Mistral, and any custom OpenAI-compatible endpoint. Capture or import up to 10 food photos with an optional note, scan a barcode, ask your AI coach how to hit your goal, speak your lunch, or use Siri Shortcuts on iOS to log food and weight. On supported iPhones, food-description analysis for text, voice-transcribed, and Siri food logs can use Apple Intelligence on-device as the final fallback after BYOK provider/fallback attempts fail. The core tracker has no required account, general cloud sync, tracking, or ads. Its sole first-party sync exception is an optional 18+ Weekly Challenge that shares only a pseudonymous display profile and weekly aggregate scores with other enrolled participants — never raw logs.
+Open-source, privacy-first calorie tracker for iOS and Android. Bring your own AI provider — 13 supported including Gemini, OpenAI, Claude, Grok, Groq, Hugging Face, Fireworks AI, DeepInfra, Mistral, and any custom OpenAI-compatible endpoint — or, on iPhone, optionally use Plus/Pro hosted AI. Capture or import up to 10 food photos with an optional note, scan a barcode, ask your AI coach how to hit your goal, speak your lunch, or use Siri Shortcuts on iOS to log food and weight. On supported iPhones, food-description analysis for text, voice-transcribed, and Siri food logs can use Apple Intelligence on-device as the final fallback after BYOK provider/fallback attempts fail. The core tracker has no required account, general cloud sync, tracking, or ads. Its sole first-party sync exception for scores and profiles is an optional 18+ Weekly Challenge that shares only a pseudonymous display profile and weekly aggregate scores with other enrolled participants — never raw logs.
 
-iOS and Android 6.1 (build/versionCode 34) add an optional intermittent-fasting tracker alongside the existing nutrition and workout tools. Choose a goal from 1–168 hours, start, end, or cancel a fast from the Home + menu, keep the timer across app restarts, and review or edit completed sessions. Goal alerts are optional local notifications, and fasting remains separate from calories, macros, Apple Health, and Health Connect.
+iOS and Android 7.0 (build/versionCode 35) add optional Plus/Pro hosted AI on iPhone, daily steps and burn/deficit on Home, Walk/Run logging, custom exercises with set autofill, meal date/time on review, configurable Home + actions, the iOS Log Food widget, pinch-zoom meal photos, Czech and Ukrainian (18 languages), and reliability improvements across Health Connect, workouts, and diary safety.
 
-The app also includes faster Saved Meal reuse, current-time meal copying, export of every stored nutrient, selectable water units, water progress on Apple Watch, current AI model presets, configurable timeouts for Ollama/custom endpoints, and reliability fixes across widgets, settings, images, and provider responses. Normal updates preserve existing local and Health data.
+Normal updates preserve existing local and Health data.
 
 [App Store](https://apps.apple.com/us/app/fud-ai-calorie-tracker/id6758935726) · [Google Play](https://play.google.com/store/apps/details?id=com.apoorvdarshan.calorietracker) · [Website](https://fud-ai.app) · [Report an Issue](https://github.com/apoorvdarshan/fud-ai/issues/new?template=bug_report.yml) · [Request a Feature](https://github.com/apoorvdarshan/fud-ai/issues/new?template=feature_request.yml)
 
@@ -102,10 +102,10 @@ Fud AI is a Udyam-registered micro enterprise in India, operating as a sole prop
 - **Optional iCloud / Google Drive Backup** — off until you turn it on in Settings → Data Management; iPhone uses iCloud, Android uses Google Drive after sign-in at that toggle only; restore keeps original Health IDs so samples are not duplicated
 - **Apple Watch** — watchOS app and complications show calories, macros, and compact water progress when water tracking is enabled
 - **Widgets** — iOS offers Fud AI in Small, Medium, and Large, small Protein, and a separate small/Lock Screen Water widget; Android offers Calorie, Protein, Today, and Water Glance widgets that update from local snapshots
-- **Share the App** — native iOS share sheet from About → forwards App Store URL plus a personalized message and `fud-ai.app` link; message body localized into all 17 iOS languages
+- **Share the App** — native iOS share sheet from About → forwards App Store URL plus a personalized message and `fud-ai.app` link; message body localized into all 18 iOS languages
 - **Update check** — About shows the installed app version, opens the App Store / Play Store when a newer version is available, and shows a tab dot for pending updates
 - **Theme color** — iOS and Android Settings let users change the app accent, with matching home screen / launcher icons
-- **Languages** — iOS and Android support 17 languages: Arabic, Azerbaijani, Czech, Dutch, English, French, German, Hindi, Italian, Japanese, Korean, Polish, Portuguese (Brazil), Romanian, Russian, Simplified Chinese, Spanish. The app auto-selects by the phone's Language setting.
+- **Languages** — iOS and Android support 18 languages: Arabic, Azerbaijani, Czech, Dutch, English, French, German, Hindi, Italian, Japanese, Korean, Polish, Portuguese (Brazil), Romanian, Russian, Simplified Chinese, Spanish, Ukrainian. The app auto-selects by the phone's Language setting.
 - **Meal reminders** — customizable breakfast, lunch, dinner notifications
 - **Dark mode** — system, light, or dark
 - **Metric & imperial** units
@@ -267,15 +267,15 @@ All values can be manually overridden in Settings, with a **Recalculate Goals** 
 | **Speech** | Native `SFSpeechRecognizer` / Android `SpeechRecognizer` or remote providers via `SpeechService` (m4a upload) |
 | **Health** | HealthKit / Health Connect read-write paths for body measurements, meal nutrition, and calculated workout calories, with UUID-tagged samples for safe delete |
 | **Pattern** | `@Observable` + `.environment()`, main actor isolation |
-| **Localization** | `Localizable.xcstrings` (String Catalog), 17 iOS languages, auto-selected by iPhone's system language |
+| **Localization** | `Localizable.xcstrings` (String Catalog), 18 iOS languages, auto-selected by iPhone's system language |
 | **Dependencies** | Native platform frameworks; detailed app data and API keys remain local, with only opt-in Weekly Challenge profile/aggregate fields sent to Fud AI |
 
 ### Repo Layout
 
 ```
 fud-ai/
-├── ios/          # SwiftUI iOS app (v6.1 build 34)
-├── android/      # Kotlin + Jetpack Compose app (min SDK 26 / Android 8.0, v6.1 / versionCode 34)
+├── ios/          # SwiftUI iOS app (v7.0 build 35)
+├── android/      # Kotlin + Jetpack Compose app (min SDK 26 / Android 8.0, v7.0 / versionCode 35)
 ├── web/          # Marketing site — https://fud-ai.app (static HTML/CSS, Cloudflare Workers)
 ├── APPSTORE.md   # App Store Connect listing copy (iOS)
 ├── PLAYSTORE.md  # Google Play Console listing copy (Android)
@@ -294,7 +294,7 @@ ios/
 └── calorietracker/
     ├── calorietrackerApp.swift       # Entry point, environment setup
     ├── ContentView.swift             # 5-tab layout (Home, Progress, Coach, Settings, Workouts)
-    ├── Localizable.xcstrings         # String Catalog, 17 languages
+    ├── Localizable.xcstrings         # String Catalog, 18 languages
     ├── Models/
     │   ├── AIProvider.swift          # 13 LLM providers, model lists, settings
     │   ├── SpeechProvider.swift      # 6 STT options + Keychain settings
