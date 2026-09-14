@@ -1073,6 +1073,9 @@ section { position: relative; padding: clamp(72px, 10vw, 128px) 0; }
   background: var(--ink-text);
 }
 .legal-table tr:last-child td { border-bottom: none; }
+/* Landing pages reuse the legal prose stock; store buttons keep their own ink. */
+.legal-content .cta-group { margin: 28px 0 10px; }
+.legal-content .cta-group a, .legal-content .cta-group a:hover { color: var(--ink-text); text-decoration: none; }
 
 /* ----------------------------------------------------------------
    SCROLL REVEALS (classes added by the tiny observer script;
