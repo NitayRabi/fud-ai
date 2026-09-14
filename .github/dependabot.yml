@@ -49,6 +49,10 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: org.jetbrains.kotlin.*
         update-types: ["version-update:semver-major"]
+      # CodeQL java-kotlin extractor lags Kotlin; 2.4.20+ fails analysis
+      # ("supports versions below 2.4.20"). Revisit when CodeQL catches up.
+      - dependency-name: org.jetbrains.kotlin.*
+        versions: [">=2.4.20"]
     commit-message:
       prefix: "Android"
 
