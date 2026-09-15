@@ -52,8 +52,8 @@ internal class IngredientIntakeViewModel : ViewModel() {
         failureMessage,
         loadImage = {
             withContext(Dispatchers.IO) {
-                resolver.openInputStream(uri)?.use { it.readBytes() }
-            }?.takeIf { it.isNotEmpty() } ?: throw IllegalStateException(failureMessage)
+                ContentUriBytes.readBounded(resolver, uri)
+            } ?: throw IllegalStateException(failureMessage)
         },
         analyze = { bytes -> block(bytes ?: throw IllegalStateException(failureMessage)) }
     )

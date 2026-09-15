@@ -91,9 +91,7 @@ internal class PhotoCaptureDraftViewModel(
         appendAsync {
             if (generation != sessionGeneration) return@appendAsync emptyList()
             val imported = withContext(Dispatchers.IO) {
-                uris.mapNotNull { uri ->
-                    runCatching { resolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
-                }
+                uris.mapNotNull { uri -> ContentUriBytes.readBounded(resolver, uri) }
             }
             if (generation != sessionGeneration) return@appendAsync emptyList()
             if (imported.none { it.isNotEmpty() }) throw IllegalStateException(failureMessage)
