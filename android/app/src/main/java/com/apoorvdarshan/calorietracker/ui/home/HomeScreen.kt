@@ -2800,7 +2800,9 @@ private fun AnalyzingOverlay(imageBytes: ByteArray? = null, onCancel: (() -> Uni
     //   filling the screen, opaque background, calorie-pink accents.
     val bitmap by produceState<android.graphics.Bitmap?>(initialValue = null, imageBytes) {
         value = withContext(Dispatchers.IO) {
-            imageBytes?.let { FoodImageDecoder.decode(it, 720) }
+            // Skip overlay decode for huge cold-start imports so analysis isn't fighting the UI
+            // for memory/CPU on the first scan after open.
+            imageBytes?.takeIf { it.size <= 3_000_000 }?.let { FoodImageDecoder.decode(it, 720) }
         }
     }
     Box(

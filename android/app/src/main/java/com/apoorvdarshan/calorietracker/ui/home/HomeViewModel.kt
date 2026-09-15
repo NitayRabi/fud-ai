@@ -150,6 +150,8 @@ private val _stepsRefreshEpoch = MutableStateFlow(0)
     private var analysisJob: Job? = null
     /** Bumped on each analysis launch so a delayed cancel cleanup cannot wipe a newer draft. */
     private var analysisGeneration: Long = 0L
+    /** Invalidates an in-flight savePendingDraft if the user dismisses/logs before it finishes. */
+    private var draftSaveGeneration: Long = 0L
     private val foodSubmissionGate = FoodSubmissionGate()
     private var thumbnailPrefetchJob: Job? = null
     /** Draft-photo warm-up; canceled before discard so it cannot recreate deleted thumbnails. */
@@ -626,6 +628,7 @@ viewModelScope.launch {
         val pendingAnalysis = _ui.value.pendingAnalysis ?: return
         val analysis = editedAnalysis ?: pendingAnalysis
         if (!foodSubmissionGate.tryBegin()) return
+        draftSaveGeneration += 1
         _ui.value = _ui.value.copy(foodSaveInProgress = true)
         val reviewSource = _ui.value.pendingReviewSource
         val pendingFoodSource = _ui.value.pendingFoodSource
@@ -762,6 +765,7 @@ viewModelScope.launch {
 
     fun dismissPending() {
         retryAction = null
+        draftSaveGeneration += 1
         val previousDraftImages = _ui.value.pendingDraftImageFilenames
         _ui.value = _ui.value.copy(
             pendingAnalysis = null,
@@ -812,6 +816,7 @@ viewModelScope.launch {
         val draftImagesToDiscard = _ui.value.pendingDraftImageFilenames
         analysisJob = null
         retryAction = null
+        draftSaveGeneration += 1
         job?.cancel()
         container.analyzingFood.value = false
         _ui.value = _ui.value.copy(
@@ -976,12 +981,31 @@ viewModelScope.launch {
         source: FoodSource
     ) {
         retryAction = null
-        // Persist the originals off the main thread and skip the eager thumbnail decode so the
-        // analyzing overlay clears as soon as the AI result is in, even for a large first photo.
+        draftSaveGeneration += 1
+        val saveGeneration = draftSaveGeneration
+        // Drop the analyzing overlay immediately — disk + DataStore must not keep the user waiting
+        // after Gemini already returned (large first photos made this look like a permanent hang).
+        _ui.value = _ui.value.copy(
+            analyzing = false,
+            pendingAnalysis = analysis,
+            pendingImageBytes = imageBytesList.firstOrNull(),
+            pendingAdditionalImageBytes = imageBytesList.drop(1),
+            pendingFoodSource = source,
+            pendingDraftImageFilename = null,
+            pendingDraftAdditionalImageFilenames = emptyList(),
+            pendingReviewSource = null
+        )
         val imageFilenames = withContext(Dispatchers.IO) {
             imageBytesList.mapNotNull {
                 container.imageStore.storeBytes(it, UUID.randomUUID(), writeThumbnail = false)
             }
+        }
+        // User dismissed/logged while we were writing — drop orphans and do not recreate the draft.
+        if (saveGeneration != draftSaveGeneration || _ui.value.pendingAnalysis !== analysis) {
+            if (imageFilenames.isNotEmpty()) {
+                withContext(Dispatchers.IO) { imageFilenames.forEach { container.imageStore.delete(it) } }
+            }
+            return
         }
         val imageFilename = imageFilenames.firstOrNull()
         val additionalImageFilenames = imageFilenames.drop(1)
@@ -993,18 +1017,18 @@ viewModelScope.launch {
                 source = source
             )
         )
+        if (saveGeneration != draftSaveGeneration || _ui.value.pendingAnalysis !== analysis) {
+            container.prefs.setPendingFoodAnalysisDraft(null)
+            if (imageFilenames.isNotEmpty()) {
+                withContext(Dispatchers.IO) { imageFilenames.forEach { container.imageStore.delete(it) } }
+            }
+            return
+        }
         _ui.value = _ui.value.copy(
-            analyzing = false,
-            pendingAnalysis = analysis,
-            pendingImageBytes = imageBytesList.firstOrNull(),
-            pendingAdditionalImageBytes = imageBytesList.drop(1),
-            pendingFoodSource = source,
             pendingDraftImageFilename = imageFilename,
-            pendingDraftAdditionalImageFilenames = additionalImageFilenames,
-            pendingReviewSource = null
+            pendingDraftAdditionalImageFilenames = additionalImageFilenames
         )
         if (imageFilenames.isNotEmpty()) {
-            // Best-effort: diary rows generate missing thumbnails lazily anyway.
             draftThumbnailJob?.cancel()
             draftThumbnailJob = viewModelScope.launch(Dispatchers.IO) {
                 container.imageStore.warmThumbnails(imageFilenames)
@@ -1031,20 +1055,26 @@ viewModelScope.launch {
         )
     }
 
-    private suspend fun discardPendingDraft(imageFilenames: List<String> = _ui.value.pendingDraftImageFilenames) {
-        val filenames = imageFilenames.ifEmpty {
-            container.prefs.pendingFoodAnalysisDraft.first()?.let {
-                listOfNotNull(it.imageFilename) + it.additionalImageFilenames
-            }.orEmpty()
-        }
-        // Stop warm-up before delete so it cannot recreate thumbnail files after we remove them.
+    /**
+     * Clears the in-progress draft. Prefer UI-known filenames; if the list is empty (restore
+     * still in flight), fall back to one prefs read so draft JPEGs are not orphaned.
+     */
+    private suspend fun discardPendingDraft(imageFilenames: List<String>) {
+        draftSaveGeneration += 1
         val warmJob = draftThumbnailJob
         draftThumbnailJob = null
         warmJob?.cancel()
         warmJob?.join()
+        val toDelete = if (imageFilenames.isNotEmpty()) {
+            imageFilenames
+        } else {
+            container.prefs.pendingFoodAnalysisDraft.first()?.let {
+                listOfNotNull(it.imageFilename) + it.additionalImageFilenames
+            }.orEmpty()
+        }
         container.prefs.setPendingFoodAnalysisDraft(null)
-        if (filenames.isNotEmpty()) {
-            withContext(Dispatchers.IO) { filenames.forEach { container.imageStore.delete(it) } }
+        if (toDelete.isNotEmpty()) {
+            withContext(Dispatchers.IO) { toDelete.forEach { container.imageStore.delete(it) } }
         }
     }
 
