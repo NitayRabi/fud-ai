@@ -4,7 +4,10 @@ import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.media.ExifInterface
+import android.os.Build
 import androidx.test.platform.app.InstrumentationRegistry
+import com.apoorvdarshan.calorietracker.services.ai.AiError
+import com.apoorvdarshan.calorietracker.services.ai.AiErrorKind
 import com.apoorvdarshan.calorietracker.services.ai.FoodImagePreprocessor
 import org.junit.Assert.*
 import org.junit.Test
@@ -64,8 +67,72 @@ class FoodImageDecoderTest {
         assertNull(FoodImageDecoder.decode(byteArrayOf()))
         assertNull(FoodImageDecoder.decode(byteArrayOf(1, 2, 3)))
         assertNull(FoodImageDecoder.decode(File(context.cacheDir, "missing-${UUID.randomUUID()}")))
-        val invalid = byteArrayOf(1, 2, 3)
-        assertArrayEquals(invalid, FoodImagePreprocessor.prepareForUpload(invalid))
+        // Undecodable bytes must never be uploaded labeled as image/jpeg.
+        for (invalid in listOf(byteArrayOf(), byteArrayOf(1, 2, 3), "not an image".toByteArray())) {
+            val error = assertThrows(AiError::class.java) { FoodImagePreprocessor.prepareForUpload(invalid) }
+            assertEquals(AiErrorKind.IMAGE_CONVERSION, error.kind)
+        }
+    }
+
+    @Test fun uploadPreprocessorAlwaysProducesJpegFromOtherFormats() {
+        for (format in listOf(Bitmap.CompressFormat.PNG, Bitmap.CompressFormat.WEBP)) {
+            val encoded = encodedPhoto(format, width = 2_000, height = 1_000)
+            assertFalse("$format input is not a JPEG", encoded.isJpeg())
+            val upload = FoodImagePreprocessor.prepareForUpload(encoded)
+            assertTrue("$format upload is a JPEG", upload.isJpeg())
+            val decoded = FoodImageDecoder.decode(upload)!!
+            assertEquals(1_600, maxOf(decoded.width, decoded.height))
+            assertCorners(decoded, expectedCorners.first())
+            decoded.recycle()
+        }
+        val fromJpeg = FoodImagePreprocessor.prepareForUpload(encodedPhoto(Bitmap.CompressFormat.JPEG))
+        assertTrue(fromJpeg.isJpeg())
+    }
+
+    @Test fun imageDecoderFallbackMatchesBitmapFactoryForEveryOrientation() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
+        for (orientation in 1..8) withPhoto(orientation, width = 240, height = 160) { file ->
+            val original = file.readBytes()
+            val fallback = FoodImageDecoder.decodeWithImageDecoder(original)
+            assertNotNull("orientation $orientation", fallback)
+            fallback!!
+            assertEquals(orientation >= 5, fallback.height > fallback.width)
+            assertCorners(fallback, expectedCorners[orientation - 1])
+            fallback.recycle()
+
+            val capped = FoodImageDecoder.decodeWithImageDecoder(original, 40)!!
+            assertEquals(40, maxOf(capped.width, capped.height))
+            assertCorners(capped, expectedCorners[orientation - 1])
+            capped.recycle()
+        }
+        assertNull(FoodImageDecoder.decodeWithImageDecoder(byteArrayOf(1, 2, 3)))
+        val webp = FoodImageDecoder.decodeWithImageDecoder(encodedPhoto(Bitmap.CompressFormat.WEBP), 60)!!
+        assertEquals(60, maxOf(webp.width, webp.height))
+        assertCorners(webp, expectedCorners.first())
+        webp.recycle()
+    }
+
+    private fun ByteArray.isJpeg(): Boolean =
+        size >= 3 && this[0] == 0xFF.toByte() && this[1] == 0xD8.toByte() && this[2] == 0xFF.toByte()
+
+    private fun encodedPhoto(format: Bitmap.CompressFormat, width: Int = 120, height: Int = 80): ByteArray {
+        val bitmap = quadrantBitmap(width, height)
+        return try {
+            java.io.ByteArrayOutputStream().use { out ->
+                assertTrue(bitmap.compress(format, 100, out))
+                out.toByteArray()
+            }
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    private fun quadrantBitmap(width: Int, height: Int): Bitmap {
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        for (y in 0 until height) for (x in 0 until width) {
+            bitmap.setPixel(x, y, colors[(if (y >= height / 2) 2 else 0) + (if (x >= width / 2) 1 else 0)])
+        }
+        return bitmap
     }
 
     @Test fun legacyThumbnailsHealWithoutChangingOriginalsOrOtherData() {
@@ -110,10 +177,7 @@ class FoodImageDecoderTest {
     ) {
         val file = File.createTempFile("orientation-", ".jpg", context.cacheDir)
         try {
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            for (y in 0 until height) for (x in 0 until width) {
-                bitmap.setPixel(x, y, colors[(if (y >= height / 2) 2 else 0) + (if (x >= width / 2) 1 else 0)])
-            }
+            val bitmap = quadrantBitmap(width, height)
             file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it) }
             bitmap.recycle()
             if (orientation != null) ExifInterface(file.absolutePath).apply {

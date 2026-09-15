@@ -152,6 +152,8 @@ private val _stepsRefreshEpoch = MutableStateFlow(0)
     private var analysisGeneration: Long = 0L
     private val foodSubmissionGate = FoodSubmissionGate()
     private var thumbnailPrefetchJob: Job? = null
+    /** Draft-photo warm-up; canceled before discard so it cannot recreate deleted thumbnails. */
+    private var draftThumbnailJob: Job? = null
     private var lastPrefetchedFilenames: Set<String>? = null
 
     /** Re-read Health Connect energy after resume or other external invalidation. */
@@ -974,7 +976,13 @@ viewModelScope.launch {
         source: FoodSource
     ) {
         retryAction = null
-        val imageFilenames = imageBytesList.mapNotNull { container.imageStore.storeBytes(it, UUID.randomUUID()) }
+        // Persist the originals off the main thread and skip the eager thumbnail decode so the
+        // analyzing overlay clears as soon as the AI result is in, even for a large first photo.
+        val imageFilenames = withContext(Dispatchers.IO) {
+            imageBytesList.mapNotNull {
+                container.imageStore.storeBytes(it, UUID.randomUUID(), writeThumbnail = false)
+            }
+        }
         val imageFilename = imageFilenames.firstOrNull()
         val additionalImageFilenames = imageFilenames.drop(1)
         container.prefs.setPendingFoodAnalysisDraft(
@@ -995,6 +1003,13 @@ viewModelScope.launch {
             pendingDraftAdditionalImageFilenames = additionalImageFilenames,
             pendingReviewSource = null
         )
+        if (imageFilenames.isNotEmpty()) {
+            // Best-effort: diary rows generate missing thumbnails lazily anyway.
+            draftThumbnailJob?.cancel()
+            draftThumbnailJob = viewModelScope.launch(Dispatchers.IO) {
+                container.imageStore.warmThumbnails(imageFilenames)
+            }
+        }
     }
 
     private suspend fun restorePendingDraft(draft: PendingFoodAnalysisDraft) {
@@ -1022,8 +1037,15 @@ viewModelScope.launch {
                 listOfNotNull(it.imageFilename) + it.additionalImageFilenames
             }.orEmpty()
         }
+        // Stop warm-up before delete so it cannot recreate thumbnail files after we remove them.
+        val warmJob = draftThumbnailJob
+        draftThumbnailJob = null
+        warmJob?.cancel()
+        warmJob?.join()
         container.prefs.setPendingFoodAnalysisDraft(null)
-        filenames.forEach { container.imageStore.delete(it) }
+        if (filenames.isNotEmpty()) {
+            withContext(Dispatchers.IO) { filenames.forEach { container.imageStore.delete(it) } }
+        }
     }
 
     class Factory(private val container: AppContainer) : ViewModelProvider.Factory {

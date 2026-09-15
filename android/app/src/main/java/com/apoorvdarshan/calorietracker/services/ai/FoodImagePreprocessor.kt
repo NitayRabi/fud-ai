@@ -9,15 +9,28 @@ internal object FoodImagePreprocessor {
     private const val MAX_DIMENSION = 1_600
     private const val JPEG_QUALITY = 80
 
-    fun prepareForUpload(bytes: ByteArray): ByteArray = runCatching {
-        val bitmap = FoodImageDecoder.decode(bytes, MAX_DIMENSION) ?: return bytes
+    /**
+     * Always returns a freshly encoded JPEG, because every provider client labels uploads
+     * as `image/jpeg`. Undecodable input (corrupt data, or a HEIC/HEIF the device cannot
+     * decode) fails with [AiError.ImageConversionFailed] instead of being uploaded as-is —
+     * mislabeled raw bytes made Gemini stall until the request timeout.
+     */
+    fun prepareForUpload(bytes: ByteArray): ByteArray {
+        val bitmap = runCatching { FoodImageDecoder.decode(bytes, MAX_DIMENSION) }.getOrNull()
+            ?: throw AiError.ImageConversionFailed
         try {
-            ByteArrayOutputStream().use { output ->
-                if (!bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, output)) return bytes
+            return ByteArrayOutputStream().use { output ->
+                if (!bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, output)) {
+                    throw AiError.ImageConversionFailed
+                }
                 output.toByteArray()
             }
+        } catch (error: AiError) {
+            throw error
+        } catch (error: Throwable) {
+            throw AiError.ImageConversionFailed
         } finally {
             bitmap.recycle()
         }
-    }.getOrDefault(bytes)
+    }
 }

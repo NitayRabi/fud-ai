@@ -53,10 +53,14 @@ class FoodImageStore private constructor(
         filename
     }.getOrNull()
 
-    fun storeBytes(bytes: ByteArray, entryId: UUID): String? = runCatching {
+    /**
+     * Writes the original bytes untouched. Pass [writeThumbnail] = false on latency-sensitive
+     * paths; [loadThumbnail] / [warmThumbnails] generate the thumbnail lazily on first use.
+     */
+    fun storeBytes(bytes: ByteArray, entryId: UUID, writeThumbnail: Boolean = true): String? = runCatching {
         val filename = "${entryId}.jpg"
         File(dir, filename).writeBytes(bytes)
-        runCatching {
+        if (writeThumbnail) runCatching {
             FoodImageDecoder.decode(bytes, THUMBNAIL_MAX_DIMENSION)?.let { writeThumbnail(filename, it) }
         }
         filename

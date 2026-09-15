@@ -270,18 +270,19 @@ DisposableEffect(lifecycleOwner, vm) {
         captureProgressiveMeal = false
     }
     var isImportingPhotos by rememberSaveable { mutableStateOf(false) }
+    val photoImportFailedMessage = stringResource(R.string.ai_error_image_conversion)
 
     val photoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
     ) { uris ->
-        val remaining = 10 - pendingCaptureImageBytes.size
-        val imported = uris.take(remaining).mapNotNull { uri ->
-            ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        // Cap against the active session inside the draft VM (after any queued clear).
+        // Busy flips immediately so Analyze cannot race a pending import.
+        if (uris.isNotEmpty()) {
+            captureDraft.importUris(ctx.applicationContext.contentResolver, uris, photoImportFailedMessage)
+            showMultiPhotoCapture = true
+        } else if (pendingCaptureImageBytes.isNotEmpty()) {
+            showMultiPhotoCapture = true
         }
-        if (imported.isNotEmpty()) {
-            captureDraft.append(imported)
-        }
-        if (imported.isNotEmpty() || pendingCaptureImageBytes.isNotEmpty()) showMultiPhotoCapture = true
     }
 
     val cameraPermission = rememberLauncherForActivityResult(

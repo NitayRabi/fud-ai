@@ -110,10 +110,12 @@ internal fun IngredientIntakeSection(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val bytes = runCatching {
-            ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-        }.getOrNull()
-        if (bytes != null) runAnalysis(imageBytes = bytes) { analyzeImage(bytes) }
+        intake.analyzeImportedPhoto(
+            ctx.applicationContext.contentResolver,
+            uri,
+            container.imageStore,
+            analysisFailedMessage
+        ) { bytes -> analyzeImage(bytes) }
     }
 
     val cameraPermission = rememberLauncherForActivityResult(
