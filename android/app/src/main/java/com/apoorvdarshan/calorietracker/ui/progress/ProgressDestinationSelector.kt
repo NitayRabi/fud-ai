@@ -94,7 +94,9 @@ internal fun ProgressDestinationSelector(
                 )
                 Text(
                     text = stringResource(destination.labelRes),
-                    modifier = Modifier.padding(start = 6.dp),
+                    modifier = Modifier
+                        .padding(start = 6.dp)
+                        .weight(1f, fill = false),
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
