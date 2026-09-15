@@ -152,6 +152,8 @@ private val _stepsRefreshEpoch = MutableStateFlow(0)
     private var analysisGeneration: Long = 0L
     private val foodSubmissionGate = FoodSubmissionGate()
     private var thumbnailPrefetchJob: Job? = null
+    /** Draft-photo warm-up; canceled before discard so it cannot recreate deleted thumbnails. */
+    private var draftThumbnailJob: Job? = null
     private var lastPrefetchedFilenames: Set<String>? = null
 
     /** Re-read Health Connect energy after resume or other external invalidation. */
@@ -1003,7 +1005,10 @@ viewModelScope.launch {
         )
         if (imageFilenames.isNotEmpty()) {
             // Best-effort: diary rows generate missing thumbnails lazily anyway.
-            viewModelScope.launch(Dispatchers.IO) { container.imageStore.warmThumbnails(imageFilenames) }
+            draftThumbnailJob?.cancel()
+            draftThumbnailJob = viewModelScope.launch(Dispatchers.IO) {
+                container.imageStore.warmThumbnails(imageFilenames)
+            }
         }
     }
 
@@ -1032,6 +1037,11 @@ viewModelScope.launch {
                 listOfNotNull(it.imageFilename) + it.additionalImageFilenames
             }.orEmpty()
         }
+        // Stop warm-up before delete so it cannot recreate thumbnail files after we remove them.
+        val warmJob = draftThumbnailJob
+        draftThumbnailJob = null
+        warmJob?.cancel()
+        warmJob?.join()
         container.prefs.setPendingFoodAnalysisDraft(null)
         if (filenames.isNotEmpty()) {
             withContext(Dispatchers.IO) { filenames.forEach { container.imageStore.delete(it) } }

@@ -275,13 +275,14 @@ DisposableEffect(lifecycleOwner, vm) {
     val photoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
     ) { uris ->
-        val selected = uris.take((10 - pendingCaptureImageBytes.size).coerceAtLeast(0))
-        // The import runs on IO inside the draft view model; its busy state drives the
-        // progress dialog below until the first bytes land, then the capture sheet appears.
-        if (selected.isNotEmpty()) {
-            captureDraft.importUris(ctx.applicationContext.contentResolver, selected, photoImportFailedMessage)
+        // Cap against the active session inside the draft VM (after any queued clear).
+        // Busy flips immediately so Analyze cannot race a pending import.
+        if (uris.isNotEmpty()) {
+            captureDraft.importUris(ctx.applicationContext.contentResolver, uris, photoImportFailedMessage)
+            showMultiPhotoCapture = true
+        } else if (pendingCaptureImageBytes.isNotEmpty()) {
+            showMultiPhotoCapture = true
         }
-        if (selected.isNotEmpty() || pendingCaptureImageBytes.isNotEmpty()) showMultiPhotoCapture = true
     }
 
     val cameraPermission = rememberLauncherForActivityResult(

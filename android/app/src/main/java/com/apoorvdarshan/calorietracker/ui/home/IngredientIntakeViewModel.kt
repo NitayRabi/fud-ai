@@ -12,6 +12,7 @@ import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -48,10 +49,10 @@ internal class IngredientIntakeViewModel : ViewModel() {
         failureMessage,
         loadImage = {
             withContext(Dispatchers.IO) {
-                runCatching { resolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+                resolver.openInputStream(uri)?.use { it.readBytes() }
             }?.takeIf { it.isNotEmpty() } ?: throw IllegalStateException(failureMessage)
         },
-        analyze = { bytes -> block(checkNotNull(bytes)) }
+        analyze = { bytes -> block(bytes ?: throw IllegalStateException(failureMessage)) }
     )
 
     private fun start(
@@ -63,16 +64,25 @@ internal class IngredientIntakeViewModel : ViewModel() {
         if (mutableState.value.busy || mutableState.value.result != null) return
         mutableState.value = IngredientIntakeState(busy = true)
         request = viewModelScope.launch {
+            var storedFilename: String? = null
             try {
                 val imageBytes = loadImage()
                 val ingredient = analyze(imageBytes).toMealIngredient()
-                val filename = imageBytes?.let {
+                storedFilename = imageBytes?.let {
                     withContext(Dispatchers.IO) { imageStore.storeBytes(it, UUID.randomUUID()) }
                 }
-                mutableState.value = IngredientIntakeState(result = ingredient.copy(imageFilename = filename))
+                mutableState.value = IngredientIntakeState(result = ingredient.copy(imageFilename = storedFilename))
             } catch (cancelled: CancellationException) {
+                val orphan = storedFilename
+                if (orphan != null) {
+                    withContext(NonCancellable + Dispatchers.IO) { imageStore.delete(orphan) }
+                }
                 throw cancelled
             } catch (error: Exception) {
+                val orphan = storedFilename
+                if (orphan != null) {
+                    withContext(NonCancellable + Dispatchers.IO) { imageStore.delete(orphan) }
+                }
                 mutableState.value = IngredientIntakeState(
                     error = error.message?.takeIf { it.isNotBlank() } ?: failureMessage
                 )

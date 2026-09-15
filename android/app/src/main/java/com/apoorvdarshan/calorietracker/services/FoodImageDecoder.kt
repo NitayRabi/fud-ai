@@ -15,33 +15,29 @@ import kotlin.math.max
 
 /** Decodes upright pixels without modifying the original photo or its metadata. */
 internal object FoodImageDecoder {
-    fun decode(bytes: ByteArray, maxDimension: Int = Int.MAX_VALUE): Bitmap? = decode(
-        maxDimension,
-        { options -> BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) },
-        { ByteArrayInputStream(bytes).use { ExifInterface(it).orientation() } },
-        { ImageDecoder.createSource(ByteBuffer.wrap(bytes)) }
-    )
-
-    fun decode(file: File, maxDimension: Int = Int.MAX_VALUE): Bitmap? = decode(
-        maxDimension,
-        { options -> BitmapFactory.decodeFile(file.absolutePath, options) },
-        { ExifInterface(file.absolutePath).orientation() },
-        { ImageDecoder.createSource(file) }
-    )
-
-    private fun decode(
-        maxDimension: Int,
-        readBitmap: (BitmapFactory.Options) -> Bitmap?,
-        readOrientation: () -> Int,
-        imageDecoderSource: () -> ImageDecoder.Source
-    ): Bitmap? {
+    fun decode(bytes: ByteArray, maxDimension: Int = Int.MAX_VALUE): Bitmap? {
         require(maxDimension > 0)
         // BitmapFactory is the fast path for the plain JPEGs the in-app camera produces.
         // Gallery / Photo Picker imports on modern devices can be HEIC/HEIF, WebP, or other
         // formats BitmapFactory rejects on some OEM builds; ImageDecoder (API 28+) covers those.
-        decodeWithBitmapFactory(maxDimension, readBitmap, readOrientation)?.let { return it }
+        decodeWithBitmapFactory(
+            maxDimension,
+            { options -> BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) },
+            { ByteArrayInputStream(bytes).use { ExifInterface(it).orientation() } }
+        )?.let { return it }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return null
-        return decodeWithImageDecoder(maxDimension, imageDecoderSource)
+        return decodeWithImageDecoder(maxDimension) { ImageDecoder.createSource(ByteBuffer.wrap(bytes)) }
+    }
+
+    fun decode(file: File, maxDimension: Int = Int.MAX_VALUE): Bitmap? {
+        require(maxDimension > 0)
+        decodeWithBitmapFactory(
+            maxDimension,
+            { options -> BitmapFactory.decodeFile(file.absolutePath, options) },
+            { ExifInterface(file.absolutePath).orientation() }
+        )?.let { return it }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return null
+        return decodeWithImageDecoder(maxDimension) { ImageDecoder.createSource(file) }
     }
 
     /** The fallback path on its own, so tests can prove it matches the BitmapFactory path. */
