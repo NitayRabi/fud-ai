@@ -29,6 +29,9 @@ internal class IngredientIntakeViewModel : ViewModel() {
     private val mutableState = MutableStateFlow(IngredientIntakeState())
     val state = mutableState.asStateFlow()
     private var request: Job? = null
+    private var imageStoreRef: FoodImageStore? = null
+    /** Filename written for the in-flight/unpublished result; cleared once the host consumes it. */
+    private var ownedImageFilename: String? = null
 
     fun analyze(
         imageBytes: ByteArray?,
@@ -62,6 +65,7 @@ internal class IngredientIntakeViewModel : ViewModel() {
         analyze: suspend (ByteArray?) -> FoodAnalysis
     ) {
         if (mutableState.value.busy || mutableState.value.result != null) return
+        imageStoreRef = imageStore
         mutableState.value = IngredientIntakeState(busy = true)
         request = viewModelScope.launch {
             var storedFilename: String? = null
@@ -71,18 +75,13 @@ internal class IngredientIntakeViewModel : ViewModel() {
                 storedFilename = imageBytes?.let {
                     withContext(Dispatchers.IO) { imageStore.storeBytes(it, UUID.randomUUID()) }
                 }
+                ownedImageFilename = storedFilename
                 mutableState.value = IngredientIntakeState(result = ingredient.copy(imageFilename = storedFilename))
             } catch (cancelled: CancellationException) {
-                val orphan = storedFilename
-                if (orphan != null) {
-                    withContext(NonCancellable + Dispatchers.IO) { imageStore.delete(orphan) }
-                }
+                deleteOwnedImage(imageStore, storedFilename)
                 throw cancelled
             } catch (error: Exception) {
-                val orphan = storedFilename
-                if (orphan != null) {
-                    withContext(NonCancellable + Dispatchers.IO) { imageStore.delete(orphan) }
-                }
+                deleteOwnedImage(imageStore, storedFilename)
                 mutableState.value = IngredientIntakeState(
                     error = error.message?.takeIf { it.isNotBlank() } ?: failureMessage
                 )
@@ -91,6 +90,7 @@ internal class IngredientIntakeViewModel : ViewModel() {
     }
 
     fun consumeResult() {
+        ownedImageFilename = null
         mutableState.value = mutableState.value.copy(result = null)
     }
 
@@ -99,8 +99,21 @@ internal class IngredientIntakeViewModel : ViewModel() {
     }
 
     fun discard() {
-        request?.cancel()
+        val job = request
         request = null
+        job?.cancel()
+        val orphan = ownedImageFilename
+        ownedImageFilename = null
         mutableState.value = IngredientIntakeState()
+        val store = imageStoreRef
+        if (orphan != null && store != null) {
+            viewModelScope.launch(NonCancellable + Dispatchers.IO) { store.delete(orphan) }
+        }
+    }
+
+    private suspend fun deleteOwnedImage(imageStore: FoodImageStore, filename: String?) {
+        ownedImageFilename = null
+        if (filename == null) return
+        withContext(NonCancellable + Dispatchers.IO) { imageStore.delete(filename) }
     }
 }
