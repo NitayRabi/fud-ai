@@ -1,6 +1,6 @@
 # Play Store Listing
 
-Google Play Console listing copy for Fud AI Android v7.0 / versionCode 35. Each field is in a code block for easy copy-paste. Char counts are tracked because Play Console enforces hard caps and silently truncates anything over.
+Google Play Console listing copy for Fud AI Android v7.0.1 / versionCode 37. Each field is in a code block for easy copy-paste. Char counts are tracked because Play Console enforces hard caps and silently truncates anything over.
 
 **Where to paste each field in Play Console:**
 - App name / Short description / Full description → Grow → Store presence → **Main store listing** (default English) and Grow → Store presence → **Custom store listings** → Manage translations (per-language overrides)
@@ -106,18 +106,17 @@ English-only on Play Console — non-English Play Store browsers (ar, az-AZ, cs-
 
 ---
 
-## 4. What's New (v7.0 / versionCode 35)
+## 4. What's New (v7.0.1 / versionCode 37)
 
 **500 char hard cap per language.** Paste the entire block below into Play Console's "Release notes" field — it auto-routes each `<lang-tag>` block to the matching locale.
 
 ```
 <en-US>
-• Daily steps on Home, burn/deficit line, Adaptive Goals on by default.
-• Walk/Run quick log, custom exercises, set autofill, and lift history.
-• Set meal date/time on review; configure Home + menu actions.
-• Pinch-zoom photos and optional save-to-gallery after logging.
-• Czech & Ukrainian (18 languages); Drive backup sign-out/switch.
-• Faster Workouts, smoother thumbs, Health Connect retry, reliability fixes.
+• Fixed food scan hanging on analyzing after open (Gemini / first scan).
+• Progress tabs no longer leave empty space on Weekly Challenge.
+• Still includes v7.0: steps, Walk/Run, custom exercises, meal date/time.
+• Pinch-zoom photos; Czech & Ukrainian (18 languages); Drive backup.
+• Faster Workouts, Health Connect retry, and reliability fixes.
 </en-US>
 
 <ar>

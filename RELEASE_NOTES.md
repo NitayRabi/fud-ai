@@ -9,6 +9,24 @@ same marketing version can share a feature summary while identifying different b
 
 (none yet)
 
+## android-v7.0.1
+
+Fud AI 7.0.1 — food-scan reliability for Gemini BYOK on Android.
+
+FIXED
+• Food Scan / Describe food no longer sits on analyzing forever after opening the app (especially the first scan with Gemini Flash Lite).
+• Gemini 3 requests send the right generation config and parse multi-part thinking responses correctly.
+• Progress tab My Progress / Weekly Challenge selector no longer leaves empty track on the right.
+
+IMPROVED
+• Cold-start image prep and preference loading for faster first scans.
+• Safer photo import and draft handling around analysis.
+
+Existing logs, goals, Health data, widgets, workout history, and BYOK settings are preserved during a normal update.
+
+[Release](https://github.com/apoorvdarshan/fud-ai/releases/tag/android-v7.0.1) · [Tagged source](https://github.com/apoorvdarshan/fud-ai/tree/android-v7.0.1)
+
+
 ## v7.0
 
 Fud AI 7.0 — optional hosted AI on iPhone, richer workouts and Health insights, and two new languages.
