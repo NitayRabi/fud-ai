@@ -91,11 +91,15 @@ internal class PhotoCaptureDraftViewModel(
         appendAsync {
             if (generation != sessionGeneration) return@appendAsync emptyList()
             val imported = withContext(Dispatchers.IO) {
-                uris.mapNotNull { uri -> ContentUriBytes.readBounded(resolver, uri) }
+                uris.map { uri -> ContentUriBytes.readBounded(resolver, uri) }
             }
             if (generation != sessionGeneration) return@appendAsync emptyList()
-            if (imported.none { it.isNotEmpty() }) throw IllegalStateException(failureMessage)
-            imported
+            // Reject the whole batch if any selected URI failed (oversized / unreadable)
+            // so Analyze never runs on a silently truncated selection.
+            if (imported.any { it == null } || imported.none { it != null && it.isNotEmpty() }) {
+                throw IllegalStateException(failureMessage)
+            }
+            imported.filterNotNull()
         }
     }
 
