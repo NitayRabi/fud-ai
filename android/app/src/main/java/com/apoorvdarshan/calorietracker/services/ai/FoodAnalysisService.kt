@@ -12,10 +12,14 @@ import com.apoorvdarshan.calorietracker.services.GoalEvidence
 import com.apoorvdarshan.calorietracker.services.health.HealthEnergySummary
 import com.apoorvdarshan.calorietracker.services.ondevice.LocalGemmaRuntime
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.util.Locale
+import java.util.concurrent.TimeUnit
+import com.apoorvdarshan.calorietracker.models.OpenRouterReasoningEffort
 
 internal fun multiPhotoAnalysisPrompt(
     progressiveMeal: Boolean,
@@ -506,43 +510,63 @@ class FoodAnalysisService(
         imageBytesList: List<ByteArray>,
         jsonResponse: Boolean = true
     ): String {
-        val context = prefs.userContext.first()
-        val finalPrompt = if (context.isNotBlank()) "User context (apply to every analysis): $context\n\n$prompt" else prompt
-
-        val useSeparateTextProvider = imageBytesList.isEmpty() && prefs.separateTextProviderEnabled.first()
-        val primary = if (useSeparateTextProvider) {
-            prefs.selectedTextAIProvider.first()
+        // Load settings + preprocess images in parallel. A chain of DataStore `.first()` calls
+        // used to queue behind cold-start migrations and stall the analyzing overlay before any
+        // HTTP went out — especially the first scan after opening the app.
+        val settings: com.apoorvdarshan.calorietracker.data.FoodAiCallSettings
+        val uploadImages: List<ByteArray>
+        coroutineScope {
+            val settingsDeferred = async { prefs.foodAiCallSettings(forImages = imageBytesList.isNotEmpty()) }
+            val imagesDeferred = async(Dispatchers.IO) {
+                imageBytesList.map(FoodImagePreprocessor::prepareForUpload)
+            }
+            settings = settingsDeferred.await()
+            uploadImages = imagesDeferred.await()
+        }
+        val finalPrompt = if (settings.userContext.isNotBlank()) {
+            "User context (apply to every analysis): ${settings.userContext}\n\n$prompt"
         } else {
-            prefs.selectedAIProvider.first()
+            prompt
         }
-        val primaryModel = if (useSeparateTextProvider) {
-            primary.supportedTextModelOrDefault(prefs.selectedTextAIModel.first())
-        } else {
-            primary.supportedModelOrDefault(prefs.selectedAIModel.first())
-        }
-        val primaryBaseUrl = prefs.customBaseUrl(primary).first()?.takeIf { it.isNotEmpty() } ?: primary.baseUrl
-        val primaryKey = keyStore.apiKey(primary)
-        if (primary.requiresApiKey && primaryKey.isNullOrEmpty()) throw AiError.NoApiKey
-        val maxTokens = prefs.maxResponseTokens.first()
-        val requestTimeoutSeconds = prefs.aiRequestTimeoutSeconds.first()
-        val uploadImages = withContext(Dispatchers.IO) {
-            imageBytesList.map(FoodImagePreprocessor::prepareForUpload)
-        }
+        val primaryKey = keyStore.apiKey(settings.provider)
+        if (settings.provider.requiresApiKey && primaryKey.isNullOrEmpty()) throw AiError.NoApiKey
 
         return try {
-            dispatch(primary, primaryModel, primaryBaseUrl, primaryKey, finalPrompt, uploadImages, maxTokens, requestTimeoutSeconds, jsonResponse)
+            dispatch(
+                settings.provider,
+                settings.model,
+                settings.baseUrl,
+                primaryKey,
+                finalPrompt,
+                uploadImages,
+                settings.maxTokens,
+                settings.requestTimeoutSeconds,
+                jsonResponse,
+                settings.openRouterReasoningEffort
+            )
         } catch (primaryError: Throwable) {
             if (primaryError is kotlinx.coroutines.CancellationException) throw primaryError
             val fallback = if (imageBytesList.isEmpty()) {
-                currentTextFallbackConfig(primary, primaryModel, primaryBaseUrl)
+                currentTextFallbackConfig(settings.provider, settings.model, settings.baseUrl)
             } else {
-                currentImageFallbackConfig(primary, primaryModel, primaryBaseUrl)
+                currentImageFallbackConfig(settings.provider, settings.model, settings.baseUrl)
             } ?: throw primaryError
             try {
-                dispatch(fallback.provider, fallback.model, fallback.baseUrl, fallback.apiKey, finalPrompt, uploadImages, maxTokens, requestTimeoutSeconds, jsonResponse)
+                dispatch(
+                    fallback.provider,
+                    fallback.model,
+                    fallback.baseUrl,
+                    fallback.apiKey,
+                    finalPrompt,
+                    uploadImages,
+                    settings.maxTokens,
+                    settings.requestTimeoutSeconds,
+                    jsonResponse,
+                    settings.openRouterReasoningEffort
+                )
             } catch (fallbackError: Throwable) {
                 if (fallbackError is kotlinx.coroutines.CancellationException) throw fallbackError
-                throw AiError.BothProvidersFailed(primary, fallback.provider, fallbackError)
+                throw AiError.BothProvidersFailed(settings.provider, fallback.provider, fallbackError)
             }
         }
     }
@@ -628,7 +652,8 @@ class FoodAnalysisService(
         imageBytesList: List<ByteArray>,
         maxTokens: Int,
         requestTimeoutSeconds: Int,
-        jsonResponse: Boolean
+        jsonResponse: Boolean,
+        openRouterReasoningEffort: OpenRouterReasoningEffort = OpenRouterReasoningEffort.AUTO
     ): String {
         if (provider == AIProvider.LOCAL_GEMMA) {
             return localGemma?.generate(
@@ -650,7 +675,10 @@ class FoodAnalysisService(
             AIProvider.ApiFormat.ANTHROPIC ->
                 AnthropicClient.analyze(requestClient, baseUrl, model, apiKey!!, prompt, imageBytesList, maxTokens)
             AIProvider.ApiFormat.OPENAI_COMPATIBLE ->
-                OpenAICompatibleClient.analyze(requestClient, baseUrl, model, apiKey, prompt, imageBytesList, provider, maxTokens, prefs.openRouterReasoningEffort.first())
+                OpenAICompatibleClient.analyze(
+                    requestClient, baseUrl, model, apiKey, prompt, imageBytesList, provider, maxTokens,
+                    openRouterReasoningEffort
+                )
             AIProvider.ApiFormat.LOCAL -> error("Local inference must be dispatched before network setup.")
         }
     }
@@ -714,9 +742,12 @@ class FoodAnalysisService(
 
         internal val defaultClient: OkHttpClient by lazy {
             SecureHttpClient.builder()
-                .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-                .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .connectTimeout(15, TimeUnit.SECONDS)
+                // Hard cap so a stalled Gemini/vision call cannot hold the analyzing overlay
+                // for the full read timeout with no way to progress (#357 first-scan hang).
+                .callTimeout(75, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS)
+                .writeTimeout(30, TimeUnit.SECONDS)
                 .build()
         }
     }

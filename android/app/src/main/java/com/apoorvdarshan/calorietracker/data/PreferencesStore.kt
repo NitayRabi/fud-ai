@@ -58,6 +58,17 @@ private data class HealthEnergyGoalTargetSnapshot(
     val autoBalanceMacro: AutoBalanceMacro? = null
 )
 
+/** Snapshot of AI settings for one food-analysis request (single DataStore read). */
+data class FoodAiCallSettings(
+    val userContext: String,
+    val provider: AIProvider,
+    val model: String,
+    val baseUrl: String,
+    val maxTokens: Int,
+    val requestTimeoutSeconds: Int,
+    val openRouterReasoningEffort: OpenRouterReasoningEffort
+)
+
 internal fun executableAIProviderOrDefault(
     provider: AIProvider?,
     localGemmaExecutable: Boolean,
@@ -938,6 +949,57 @@ class PreferencesStore(
         ds.edit {
             it[Keys.AI_REQUEST_TIMEOUT_SECONDS] = AIProvider.normalizedRequestTimeoutSeconds(value)
         }
+    }
+
+    /**
+     * One DataStore read for everything a food-analysis request needs. Cold-start scans used to
+     * issue ~8 sequential `.first()` calls that queued behind startup migrations and left the
+     * analyzing overlay up with no network activity.
+     */
+    suspend fun foodAiCallSettings(forImages: Boolean): FoodAiCallSettings {
+        val localOk = isLocalGemmaExecutable()
+        val prefs = ds.data.first()
+        val useSeparateText = !forImages && (prefs[Keys.SEPARATE_TEXT_PROVIDER_ENABLED] ?: false)
+        val primary = if (useSeparateText) {
+            executableAIProviderOrDefault(
+                storedAIProvider(prefs[Keys.SELECTED_TEXT_AI_PROVIDER]),
+                localOk
+            )
+        } else {
+            executableAIProviderOrDefault(
+                AIProvider.visionProviders.firstOrNull { it.name == prefs[Keys.SELECTED_AI_PROVIDER] },
+                localOk
+            )
+        }
+        val storedModel = if (useSeparateText) {
+            prefs[Keys.SELECTED_TEXT_AI_MODEL]
+        } else {
+            prefs[Keys.SELECTED_AI_MODEL]
+        }
+        val model = if (useSeparateText) {
+            primary.supportedTextModelOrDefault(
+                executableAIModelOrDefault(primary, storedModel, localOk, primary.defaultTextModel)
+            )
+        } else {
+            primary.supportedModelOrDefault(
+                executableAIModelOrDefault(primary, storedModel, localOk, primary.defaultModel)
+            )
+        }
+        val custom = prefs[stringPreferencesKey(CUSTOM_BASE_URL_PREFIX + primary.name)]
+            ?.takeIf { it.isNotEmpty() }
+        return FoodAiCallSettings(
+            userContext = prefs[Keys.USER_CONTEXT].orEmpty(),
+            provider = primary,
+            model = model,
+            baseUrl = custom ?: primary.baseUrl,
+            maxTokens = prefs[Keys.MAX_RESPONSE_TOKENS] ?: 1024,
+            requestTimeoutSeconds = AIProvider.normalizedRequestTimeoutSeconds(
+                prefs[Keys.AI_REQUEST_TIMEOUT_SECONDS] ?: AIProvider.DEFAULT_REQUEST_TIMEOUT_SECONDS
+            ),
+            openRouterReasoningEffort = OpenRouterReasoningEffort.fromValue(
+                prefs[Keys.OPENROUTER_REASONING_EFFORT]
+            )
+        )
     }
 
     // -- Custom AI Instructions ------------------------------------------

@@ -976,8 +976,18 @@ viewModelScope.launch {
         source: FoodSource
     ) {
         retryAction = null
-        // Persist the originals off the main thread and skip the eager thumbnail decode so the
-        // analyzing overlay clears as soon as the AI result is in, even for a large first photo.
+        // Drop the analyzing overlay immediately — disk + DataStore must not keep the user waiting
+        // after Gemini already returned (large first photos made this look like a permanent hang).
+        _ui.value = _ui.value.copy(
+            analyzing = false,
+            pendingAnalysis = analysis,
+            pendingImageBytes = imageBytesList.firstOrNull(),
+            pendingAdditionalImageBytes = imageBytesList.drop(1),
+            pendingFoodSource = source,
+            pendingDraftImageFilename = null,
+            pendingDraftAdditionalImageFilenames = emptyList(),
+            pendingReviewSource = null
+        )
         val imageFilenames = withContext(Dispatchers.IO) {
             imageBytesList.mapNotNull {
                 container.imageStore.storeBytes(it, UUID.randomUUID(), writeThumbnail = false)
@@ -994,17 +1004,10 @@ viewModelScope.launch {
             )
         )
         _ui.value = _ui.value.copy(
-            analyzing = false,
-            pendingAnalysis = analysis,
-            pendingImageBytes = imageBytesList.firstOrNull(),
-            pendingAdditionalImageBytes = imageBytesList.drop(1),
-            pendingFoodSource = source,
             pendingDraftImageFilename = imageFilename,
-            pendingDraftAdditionalImageFilenames = additionalImageFilenames,
-            pendingReviewSource = null
+            pendingDraftAdditionalImageFilenames = additionalImageFilenames
         )
         if (imageFilenames.isNotEmpty()) {
-            // Best-effort: diary rows generate missing thumbnails lazily anyway.
             draftThumbnailJob?.cancel()
             draftThumbnailJob = viewModelScope.launch(Dispatchers.IO) {
                 container.imageStore.warmThumbnails(imageFilenames)
@@ -1031,20 +1034,18 @@ viewModelScope.launch {
         )
     }
 
-    private suspend fun discardPendingDraft(imageFilenames: List<String> = _ui.value.pendingDraftImageFilenames) {
-        val filenames = imageFilenames.ifEmpty {
-            container.prefs.pendingFoodAnalysisDraft.first()?.let {
-                listOfNotNull(it.imageFilename) + it.additionalImageFilenames
-            }.orEmpty()
-        }
-        // Stop warm-up before delete so it cannot recreate thumbnail files after we remove them.
+    /**
+     * Clears the in-progress draft. Does **not** re-read DataStore for filenames — callers pass
+     * the UI's known list — so a cold-start scan is not blocked behind startup migrations.
+     */
+    private suspend fun discardPendingDraft(imageFilenames: List<String>) {
         val warmJob = draftThumbnailJob
         draftThumbnailJob = null
         warmJob?.cancel()
         warmJob?.join()
         container.prefs.setPendingFoodAnalysisDraft(null)
-        if (filenames.isNotEmpty()) {
-            withContext(Dispatchers.IO) { filenames.forEach { container.imageStore.delete(it) } }
+        if (imageFilenames.isNotEmpty()) {
+            withContext(Dispatchers.IO) { imageFilenames.forEach { container.imageStore.delete(it) } }
         }
     }
 

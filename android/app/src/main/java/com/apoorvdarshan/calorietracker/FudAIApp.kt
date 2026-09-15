@@ -82,6 +82,13 @@ class FudAIApp : Application() {
             container.prefs.migrateAIModelSelections()
             container.prefs.migrateMatchingSpeechProviderIfNeeded()
             container.prefs.migrateFallbackBaseUrls()
+            // Warm EncryptedSharedPreferences + OkHttp after migrations so the first food scan
+            // does not pay keystore/TLS setup cost while the analyzing overlay is up.
+            runCatching {
+                val provider = container.prefs.selectedAIProvider.first()
+                container.keyStore.apiKey(provider)
+                FoodAnalysisService.defaultClient
+            }
         }
         // Older Android builds removed food rows without removing their JPEGs.
         // Prune only unreferenced files; logged foods, saved meals, and pending
