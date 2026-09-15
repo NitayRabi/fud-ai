@@ -3,14 +3,12 @@ package com.apoorvdarshan.calorietracker.ui.progress
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,6 +28,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.apoorvdarshan.calorietracker.R
@@ -44,8 +43,8 @@ internal enum class ProgressDestination(
 }
 
 /**
- * Matches iOS `ProgressOverviewModeSelector`: capsule track with gradient
- * selected chip + icon label.
+ * Capsule track with equal-width segments so the selected chip fills its half
+ * (avoids empty trailing track when labels are content-sized — #356).
  */
 @Composable
 internal fun ProgressDestinationSelector(
@@ -62,7 +61,6 @@ internal fun ProgressDestinationSelector(
             .background(track)
             .border(0.75.dp, AppColors.Calorie.copy(alpha = 0.12f), RoundedCornerShape(50))
             .padding(4.dp)
-            .horizontalScroll(rememberScrollState())
             .selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -71,6 +69,7 @@ internal fun ProgressDestinationSelector(
             val isSelected = selected == destination
             Row(
                 modifier = Modifier
+                    .weight(1f)
                     .heightIn(min = 44.dp)
                     .clip(RoundedCornerShape(50))
                     .then(
@@ -82,9 +81,9 @@ internal fun ProgressDestinationSelector(
                         onClick = { onSelect(destination) },
                         role = Role.Tab
                     )
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                    .padding(horizontal = 10.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.Center
             ) {
                 Icon(
                     imageVector = destination.icon,
@@ -95,9 +94,11 @@ internal fun ProgressDestinationSelector(
                 )
                 Text(
                     text = stringResource(destination.labelRes),
+                    modifier = Modifier.padding(start = 6.dp),
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     color = if (isSelected) Color.White
                     else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
                 )
