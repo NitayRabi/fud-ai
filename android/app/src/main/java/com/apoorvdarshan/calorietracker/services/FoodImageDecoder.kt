@@ -2,10 +2,15 @@ package com.apoorvdarshan.calorietracker.services
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.media.ExifInterface
+import android.os.Build
+import androidx.annotation.RequiresApi
+import androidx.annotation.VisibleForTesting
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.nio.ByteBuffer
 import kotlin.math.max
 
 /** Decodes upright pixels without modifying the original photo or its metadata. */
@@ -13,38 +18,87 @@ internal object FoodImageDecoder {
     fun decode(bytes: ByteArray, maxDimension: Int = Int.MAX_VALUE): Bitmap? = decode(
         maxDimension,
         { options -> BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) },
-        { ByteArrayInputStream(bytes).use { ExifInterface(it).orientation() } }
+        { ByteArrayInputStream(bytes).use { ExifInterface(it).orientation() } },
+        { ImageDecoder.createSource(ByteBuffer.wrap(bytes)) }
     )
 
     fun decode(file: File, maxDimension: Int = Int.MAX_VALUE): Bitmap? = decode(
         maxDimension,
         { options -> BitmapFactory.decodeFile(file.absolutePath, options) },
-        { ExifInterface(file.absolutePath).orientation() }
+        { ExifInterface(file.absolutePath).orientation() },
+        { ImageDecoder.createSource(file) }
     )
 
     private fun decode(
         maxDimension: Int,
         readBitmap: (BitmapFactory.Options) -> Bitmap?,
-        readOrientation: () -> Int
+        readOrientation: () -> Int,
+        imageDecoderSource: () -> ImageDecoder.Source
     ): Bitmap? {
         require(maxDimension > 0)
-        return runCatching {
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            readBitmap(bounds)
-            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-            var sampleSize = 1
-            val longest = max(bounds.outWidth, bounds.outHeight)
-            while (longest / sampleSize / 2 >= maxDimension) sampleSize *= 2
-            val decoded = readBitmap(BitmapFactory.Options().apply { inSampleSize = sampleSize })
-                ?: return null
-            val orientation = runCatching(readOrientation).getOrDefault(ExifInterface.ORIENTATION_NORMAL)
-            val oriented = decoded.applyingExifOrientation(orientation)
-            if (oriented !== decoded) decoded.recycle()
-            val scaled = oriented.scaledToMaxDimension(maxDimension)
-            if (scaled !== oriented) oriented.recycle()
-            scaled
-        }.getOrNull()
+        // BitmapFactory is the fast path for the plain JPEGs the in-app camera produces.
+        // Gallery / Photo Picker imports on modern devices can be HEIC/HEIF, WebP, or other
+        // formats BitmapFactory rejects on some OEM builds; ImageDecoder (API 28+) covers those.
+        decodeWithBitmapFactory(maxDimension, readBitmap, readOrientation)?.let { return it }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return null
+        return decodeWithImageDecoder(maxDimension, imageDecoderSource)
     }
+
+    /** The fallback path on its own, so tests can prove it matches the BitmapFactory path. */
+    @VisibleForTesting
+    @RequiresApi(Build.VERSION_CODES.P)
+    fun decodeWithImageDecoder(bytes: ByteArray, maxDimension: Int = Int.MAX_VALUE): Bitmap? {
+        require(maxDimension > 0)
+        return decodeWithImageDecoder(maxDimension) { ImageDecoder.createSource(ByteBuffer.wrap(bytes)) }
+    }
+
+    private fun decodeWithBitmapFactory(
+        maxDimension: Int,
+        readBitmap: (BitmapFactory.Options) -> Bitmap?,
+        readOrientation: () -> Int
+    ): Bitmap? = runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        readBitmap(bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sampleSize = 1
+        val longest = max(bounds.outWidth, bounds.outHeight)
+        while (longest / sampleSize / 2 >= maxDimension) sampleSize *= 2
+        val decoded = readBitmap(BitmapFactory.Options().apply { inSampleSize = sampleSize })
+            ?: return null
+        val orientation = runCatching(readOrientation).getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+        val oriented = decoded.applyingExifOrientation(orientation)
+        if (oriented !== decoded) decoded.recycle()
+        val scaled = oriented.scaledToMaxDimension(maxDimension)
+        if (scaled !== oriented) oriented.recycle()
+        scaled
+    }.getOrNull()
+
+    @RequiresApi(Build.VERSION_CODES.P)
+    private fun decodeWithImageDecoder(
+        maxDimension: Int,
+        imageDecoderSource: () -> ImageDecoder.Source
+    ): Bitmap? = runCatching {
+        // ImageDecoder applies EXIF orientation itself, so no Matrix pass is needed here.
+        // Scaling happens inside the decoder, which keeps one bounded bitmap alive instead
+        // of a full-resolution intermediate.
+        val decoded = ImageDecoder.decodeBitmap(imageDecoderSource()) { decoder, info, _ ->
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            decoder.isMutableRequired = false
+            val width = info.size.width
+            val height = info.size.height
+            val longest = max(width, height)
+            if (longest > maxDimension) {
+                val scale = maxDimension.toFloat() / longest
+                decoder.setTargetSize(
+                    (width * scale).toInt().coerceAtLeast(1),
+                    (height * scale).toInt().coerceAtLeast(1)
+                )
+            }
+        }
+        val scaled = decoded.scaledToMaxDimension(maxDimension)
+        if (scaled !== decoded) decoded.recycle()
+        scaled
+    }.getOrNull()
 
     private fun ExifInterface.orientation(): Int =
         getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)

@@ -270,18 +270,18 @@ DisposableEffect(lifecycleOwner, vm) {
         captureProgressiveMeal = false
     }
     var isImportingPhotos by rememberSaveable { mutableStateOf(false) }
+    val photoImportFailedMessage = stringResource(R.string.ai_error_image_conversion)
 
     val photoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
     ) { uris ->
-        val remaining = 10 - pendingCaptureImageBytes.size
-        val imported = uris.take(remaining).mapNotNull { uri ->
-            ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        val selected = uris.take((10 - pendingCaptureImageBytes.size).coerceAtLeast(0))
+        // The import runs on IO inside the draft view model; its busy state drives the
+        // progress dialog below until the first bytes land, then the capture sheet appears.
+        if (selected.isNotEmpty()) {
+            captureDraft.importUris(ctx.applicationContext.contentResolver, selected, photoImportFailedMessage)
         }
-        if (imported.isNotEmpty()) {
-            captureDraft.append(imported)
-        }
-        if (imported.isNotEmpty() || pendingCaptureImageBytes.isNotEmpty()) showMultiPhotoCapture = true
+        if (selected.isNotEmpty() || pendingCaptureImageBytes.isNotEmpty()) showMultiPhotoCapture = true
     }
 
     val cameraPermission = rememberLauncherForActivityResult(

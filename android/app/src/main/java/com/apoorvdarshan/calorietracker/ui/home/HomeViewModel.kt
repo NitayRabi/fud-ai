@@ -974,7 +974,13 @@ viewModelScope.launch {
         source: FoodSource
     ) {
         retryAction = null
-        val imageFilenames = imageBytesList.mapNotNull { container.imageStore.storeBytes(it, UUID.randomUUID()) }
+        // Persist the originals off the main thread and skip the eager thumbnail decode so the
+        // analyzing overlay clears as soon as the AI result is in, even for a large first photo.
+        val imageFilenames = withContext(Dispatchers.IO) {
+            imageBytesList.mapNotNull {
+                container.imageStore.storeBytes(it, UUID.randomUUID(), writeThumbnail = false)
+            }
+        }
         val imageFilename = imageFilenames.firstOrNull()
         val additionalImageFilenames = imageFilenames.drop(1)
         container.prefs.setPendingFoodAnalysisDraft(
@@ -995,6 +1001,10 @@ viewModelScope.launch {
             pendingDraftAdditionalImageFilenames = additionalImageFilenames,
             pendingReviewSource = null
         )
+        if (imageFilenames.isNotEmpty()) {
+            // Best-effort: diary rows generate missing thumbnails lazily anyway.
+            viewModelScope.launch(Dispatchers.IO) { container.imageStore.warmThumbnails(imageFilenames) }
+        }
     }
 
     private suspend fun restorePendingDraft(draft: PendingFoodAnalysisDraft) {
@@ -1023,7 +1033,9 @@ viewModelScope.launch {
             }.orEmpty()
         }
         container.prefs.setPendingFoodAnalysisDraft(null)
-        filenames.forEach { container.imageStore.delete(it) }
+        if (filenames.isNotEmpty()) {
+            withContext(Dispatchers.IO) { filenames.forEach { container.imageStore.delete(it) } }
+        }
     }
 
     class Factory(private val container: AppContainer) : ViewModelProvider.Factory {

@@ -1,6 +1,8 @@
 package com.apoorvdarshan.calorietracker.ui.home
 
+import android.content.ContentResolver
 import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.createSavedStateHandle
@@ -72,14 +74,33 @@ internal class PhotoCaptureDraftViewModel(
         }
     }
 
-    fun append(images: List<ByteArray>) {
+    fun append(images: List<ByteArray>) = appendAsync { images }
+
+    /**
+     * Reads Photo Picker URIs on IO before persisting them. The picker can hand back cloud-only
+     * photos that download on first open, so this must never run in the Activity Result callback.
+     */
+    fun importUris(resolver: ContentResolver, uris: List<Uri>, failureMessage: String) {
+        if (uris.isEmpty()) return
+        appendAsync {
+            val imported = withContext(Dispatchers.IO) {
+                uris.mapNotNull { uri ->
+                    runCatching { resolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+                }
+            }
+            if (imported.none { it.isNotEmpty() }) throw IllegalStateException(failureMessage)
+            imported
+        }
+    }
+
+    private fun appendAsync(load: suspend () -> List<ByteArray>) {
         viewModelScope.launch {
             mutex.withLock {
                 _busy.value = true
                 _error.value = null
                 val addedNames = mutableListOf<String>()
                 try {
-                    val additions = images.filter { it.isNotEmpty() }.take((10 - _images.value.size).coerceAtLeast(0))
+                    val additions = load().filter { it.isNotEmpty() }.take((10 - _images.value.size).coerceAtLeast(0))
                     withContext(Dispatchers.IO) { additions.forEach { addedNames += files.write(it) } }
                     savedState[PHOTO_FILES] = filenames() + addedNames
                     _images.value += additions
