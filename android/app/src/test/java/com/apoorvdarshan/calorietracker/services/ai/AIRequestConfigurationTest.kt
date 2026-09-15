@@ -312,5 +312,6 @@ class AIRequestConfigurationTest {
         assertSame(base, cloud)
         assertEquals(240_000, local.readTimeoutMillis)
         assertEquals(240_000, local.writeTimeoutMillis)
+        assertEquals(240_000, local.callTimeoutMillis)
     }
 }

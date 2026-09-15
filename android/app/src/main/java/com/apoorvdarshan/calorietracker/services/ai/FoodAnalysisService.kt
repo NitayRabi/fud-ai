@@ -513,15 +513,12 @@ class FoodAnalysisService(
         // Load settings + preprocess images in parallel. A chain of DataStore `.first()` calls
         // used to queue behind cold-start migrations and stall the analyzing overlay before any
         // HTTP went out — especially the first scan after opening the app.
-        val settings: com.apoorvdarshan.calorietracker.data.FoodAiCallSettings
-        val uploadImages: List<ByteArray>
-        coroutineScope {
+        val (settings, uploadImages) = coroutineScope {
             val settingsDeferred = async { prefs.foodAiCallSettings(forImages = imageBytesList.isNotEmpty()) }
             val imagesDeferred = async(Dispatchers.IO) {
                 imageBytesList.map(FoodImagePreprocessor::prepareForUpload)
             }
-            settings = settingsDeferred.await()
-            uploadImages = imagesDeferred.await()
+            settingsDeferred.await() to imagesDeferred.await()
         }
         val finalPrompt = if (settings.userContext.isNotBlank()) {
             "User context (apply to every analysis): ${settings.userContext}\n\n$prompt"
@@ -735,8 +732,11 @@ class FoodAnalysisService(
             if (!provider.usesConfigurableRequestTimeout) return client
             val seconds = AIProvider.normalizedRequestTimeoutSeconds(requestTimeoutSeconds).toLong()
             return client.newBuilder()
-                .readTimeout(seconds, java.util.concurrent.TimeUnit.SECONDS)
-                .writeTimeout(seconds, java.util.concurrent.TimeUnit.SECONDS)
+                // Override the cloud interactive callTimeout so local/custom endpoints honor
+                // the user-configured 30–600s budget instead of inheriting the 75s food-scan cap.
+                .callTimeout(seconds, TimeUnit.SECONDS)
+                .readTimeout(seconds, TimeUnit.SECONDS)
+                .writeTimeout(seconds, TimeUnit.SECONDS)
                 .build()
         }
 
