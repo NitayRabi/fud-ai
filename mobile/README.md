@@ -90,6 +90,11 @@ builds they load from `https://assets.fud-ai.app/workout-vectors/v2/`.
 
 ## Run
 
+> **iOS 26+ note:** `expo run:ios` must use the scene-based AppDelegate (`plugins/withIosSceneLifecycle`).
+> Without it the debug build installs but immediately exits with
+> `UIScene life cycle is required for apps built with this SDK`.
+
+
 Requirements: Node 22, npm, and for device builds Xcode 16+ (iOS) / Android Studio with an SDK.
 
 ```bash
