@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildCoachSystemPrompt, chatReducer, contextMessages, initialChatState, suggestedPrompts, type ChatMessage } from '../src/domain/coach/coach';
+import {
+  boundedMessages,
+  buildCoachSystemPrompt,
+  chatReducer,
+  contextMessages,
+  initialChatState,
+  MAX_PERSISTED_ATTACHMENTS,
+  MAX_PERSISTED_MESSAGES,
+  suggestedPrompts,
+  type ChatMessage,
+} from '../src/domain/coach/coach';
 import { computeWeightForecast, regressionSlopePerDay } from '../src/domain/coach/weightForecast';
 import { makeFoodEntry } from '../src/domain/food/food';
 import { defaultUserProfile, type UserProfile } from '../src/domain/profile/userProfile';
@@ -60,6 +70,27 @@ describe('coach chat', () => {
 
     expect(chatReducer(state, { type: 'reset' }).messages).toEqual([]);
     expect(chatReducer(initialChatState, { type: 'reset' })).toBe(initialChatState);
+  });
+
+  it('bounds what is persisted: oldest messages roll off and only the newest thumbnails survive', () => {
+    const photo = (id: string): ChatMessage => ({ ...message(id, 'user'), attachmentImageBase64: `jpeg-${id}` });
+    let state = initialChatState;
+    for (let i = 0; i < MAX_PERSISTED_MESSAGES + 30; i += 1) state = chatReducer(state, { type: 'append', message: i % 10 === 0 ? photo(`m${i}`) : message(`m${i}`, 'assistant') });
+    expect(state.messages).toHaveLength(MAX_PERSISTED_MESSAGES);
+    expect(state.messages[0]?.id).toBe('m30');
+    expect(state.messages[state.messages.length - 1]?.id).toBe(`m${MAX_PERSISTED_MESSAGES + 29}`);
+
+    const withThumbnails = state.messages.filter((m) => m.attachmentImageBase64 !== undefined);
+    expect(withThumbnails).toHaveLength(MAX_PERSISTED_ATTACHMENTS);
+    expect(withThumbnails[withThumbnails.length - 1]?.id).toBe('m220');
+    // The text of a message whose thumbnail was dropped is still there.
+    expect(state.messages.find((m) => m.id === 'm30')).toEqual(message('m30', 'user'));
+
+    // Hydration applies the same bounds to an oversized legacy blob, and a small one is untouched.
+    const legacy = Array.from({ length: 40 }, (_, i) => photo(`p${i}`));
+    expect(chatReducer(initialChatState, { type: 'hydrate', messages: legacy }).messages.filter((m) => m.attachmentImageBase64).length).toBe(MAX_PERSISTED_ATTACHMENTS);
+    const small = [photo('a'), message('b', 'assistant')];
+    expect(boundedMessages(small)).toBe(small);
   });
 
   it('suggests goal-specific prompts and a training prompt when workouts exist', () => {

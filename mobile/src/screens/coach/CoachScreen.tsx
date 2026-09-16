@@ -18,7 +18,7 @@ import { aiErrorMessage } from '../../domain/ai/errors';
 import { buildCoachSystemPrompt, contextMessages, suggestedPrompts, type ChatMessage } from '../../domain/coach/coach';
 import type { ChatTurn } from '../../domain/ai/transport';
 import { generateText } from '../../services/aiClient';
-import { ImagePermissionError, pickImage, type PickedImage } from '../../services/imagePicker';
+import { ImagePermissionError, pickImage, thumbnailJPEGBase64, type PickedImage } from '../../services/imagePicker';
 import { chatStore, newId, useBody, useChat, useDiary, usePreferences, useProfile, useWorkouts } from '../../state/appStores';
 import { useTheme } from '../../theme';
 
@@ -54,18 +54,28 @@ export function CoachScreen() {
   const send = async (text = draft) => {
     const trimmed = text.trim();
     if ((trimmed.length === 0 && !attachment) || isSending) return;
+    // Like `ChatView.send()`: the ≤1600 px JPEG goes to the model once, the history keeps only
+    // a ≤700 px thumbnail so the persisted conversation stays small.
+    let thumbnail: string | undefined;
+    if (attachment) {
+      try {
+        thumbnail = await thumbnailJPEGBase64(attachment);
+      } catch {
+        setErrorMessage('Failed to process the image.');
+        return;
+      }
+    }
     const userMessage: ChatMessage = {
       id: newId(),
       role: 'user',
       content: trimmed || 'What do you see in this photo?',
       timestamp: new Date().toISOString(),
-      ...(attachment ? { attachmentImageBase64: attachment.base64 } : {}),
+      ...(thumbnail ? { attachmentImageBase64: thumbnail } : {}),
     };
-    const history: ChatTurn[] = contextMessages(chatStore.getState()).map((m) => ({
-      role: m.role,
-      text: m.content,
-      ...(m.attachmentImageBase64 ? { imageBase64: m.attachmentImageBase64 } : {}),
-    }));
+    // History is text-only for every provider, hosted included, exactly like `ChatService`:
+    // earlier photos are described by the turns around them, never re-uploaded.
+    const history: ChatTurn[] = contextMessages(chatStore.getState()).map((m) => ({ role: m.role, text: m.content }));
+    const uploadImage = attachment?.base64;
     chatStore.dispatch({ type: 'append', message: userMessage });
     setDraft('');
     setAttachment(undefined);
@@ -91,9 +101,9 @@ export function CoachScreen() {
           history,
           systemInstruction,
           jsonResponse: false,
-          ...(userMessage.attachmentImageBase64 ? { imagesBase64: [userMessage.attachmentImageBase64] } : {}),
+          ...(uploadImage ? { imagesBase64: [uploadImage] } : {}),
         },
-        { vision: userMessage.attachmentImageBase64 !== undefined, signal: controller.signal },
+        { vision: uploadImage !== undefined, signal: controller.signal },
       );
       if (controller.signal.aborted) return;
       chatStore.dispatch({ type: 'append', message: { id: newId(), role: 'assistant', content: reply.trim(), timestamp: new Date().toISOString() } });

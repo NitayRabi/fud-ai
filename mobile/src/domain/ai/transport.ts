@@ -166,7 +166,11 @@ export function buildHostedRequest(appUserId: string, request: AIGenerateRequest
   };
 }
 
-/** The hosted `generate` route takes a single prompt, so history is flattened into it. */
+/**
+ * The hosted `generate` route takes a single prompt plus the current images, so history is
+ * flattened into it as text. Coach never sends historical images to any provider (matching
+ * `ChatService`, whose history is text-only), so hosted and BYOK see the same context.
+ */
 function hostedPrompt(request: AIGenerateRequest): string {
   const history = request.history ?? [];
   if (history.length === 0) return request.prompt;

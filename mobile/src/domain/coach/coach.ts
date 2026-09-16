@@ -30,12 +30,24 @@ export interface ChatMessage {
   content: string;
   /** ISO-8601. */
   timestamp: string;
-  /** JPEG bytes, base64 — kept with the message like `attachmentImageData`. */
+  /**
+   * Bounded JPEG thumbnail (≤ 700 px, like the `thumbnailData` iOS keeps in
+   * `attachmentImageData`), base64. The full-size image is sent to the model once and never
+   * persisted; only the newest `MAX_PERSISTED_ATTACHMENTS` messages keep their thumbnail.
+   */
   attachmentImageBase64?: string;
 }
 
 export const COACH_CHAT_STORAGE_KEY = 'coachChatHistory';
 export const MAX_MESSAGES_IN_CONTEXT = 20;
+/**
+ * The whole history is one AsyncStorage value (Android reads rows through a ~2 MB cursor
+ * window), so unlike UserDefaults on iOS it has to stay bounded: the oldest messages roll
+ * off past `MAX_PERSISTED_MESSAGES`, and thumbnails older than the newest
+ * `MAX_PERSISTED_ATTACHMENTS` are dropped while their text stays.
+ */
+export const MAX_PERSISTED_MESSAGES = 200;
+export const MAX_PERSISTED_ATTACHMENTS = 12;
 
 export interface ChatState {
   messages: readonly ChatMessage[];
@@ -50,13 +62,35 @@ export type ChatAction =
   | { type: 'replaceLastAssistant'; content: string }
   | { type: 'reset' };
 
+/** Apply the persistence bounds; returns the same array when nothing has to go. */
+export function boundedMessages(messages: readonly ChatMessage[]): readonly ChatMessage[] {
+  const trimmed = messages.length > MAX_PERSISTED_MESSAGES ? messages.slice(-MAX_PERSISTED_MESSAGES) : messages;
+  let attachmentsSeen = 0;
+  let changed = trimmed !== messages;
+  const result: ChatMessage[] = [];
+  for (let i = trimmed.length - 1; i >= 0; i -= 1) {
+    const message = trimmed[i]!;
+    if (message.attachmentImageBase64 !== undefined) {
+      attachmentsSeen += 1;
+      if (attachmentsSeen > MAX_PERSISTED_ATTACHMENTS) {
+        const { attachmentImageBase64: _dropped, ...rest } = message;
+        result.push(rest);
+        changed = true;
+        continue;
+      }
+    }
+    result.push(message);
+  }
+  return changed ? result.reverse() : messages;
+}
+
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
     case 'hydrate':
-      return { ...state, messages: action.messages };
+      return { ...state, messages: boundedMessages(action.messages) };
     case 'append':
       if (state.messages.some((m) => m.id === action.message.id)) return state;
-      return { messages: [...state.messages, action.message], revision: state.revision + 1 };
+      return { messages: boundedMessages([...state.messages, action.message]), revision: state.revision + 1 };
     case 'replaceLastAssistant': {
       let index = -1;
       for (let i = state.messages.length - 1; i >= 0; i -= 1) {
