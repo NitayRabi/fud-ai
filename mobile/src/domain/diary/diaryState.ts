@@ -187,6 +187,28 @@ export function isFavorite(state: DiaryState, entry: Pick<FoodEntry, 'name'>): b
   return state.favoriteKeys.includes(favoriteKey(entry));
 }
 
+/** Distinct meals by favorite key, newest first — the Saved Meals list. */
+export function uniqueEntriesByName(entries: readonly FoodEntry[], limit: number): FoodEntry[] {
+  const seen = new Set<string>();
+  const result: FoodEntry[] = [];
+  for (const entry of [...entries].sort((a, b) => b.timestamp.localeCompare(a.timestamp))) {
+    const key = favoriteKey(entry);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(entry);
+    if (result.length === limit) break;
+  }
+  return result;
+}
+
+export function favoriteEntries(state: DiaryState): FoodEntry[] {
+  return uniqueEntriesByName(state.foodEntries.filter((e) => isFavorite(state, e)), Number.POSITIVE_INFINITY);
+}
+
+export function recentEntries(state: DiaryState, limit = 20): FoodEntry[] {
+  return uniqueEntriesByName(state.foodEntries.filter((e) => !isFavorite(state, e)), limit);
+}
+
 /** Convenience for callers that build entries from a review screen. */
 export function newFoodEntryAction(input: NewFoodEntryInput, id: string, now: Date = new Date()): DiaryAction {
   return { type: 'food/add', entry: makeFoodEntry(input, id, now) };

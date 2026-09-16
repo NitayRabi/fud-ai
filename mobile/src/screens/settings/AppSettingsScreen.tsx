@@ -1,8 +1,11 @@
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { AppText, Card, Screen } from '../../components/primitives';
 import { SettingsRow, SettingsSection, SettingsToggleRow } from '../../components/SettingsRow';
 import type { AppearanceMode } from '../../domain/prefs/preferences';
+import type { SettingsStackParamList } from '../../navigation/types';
 import { setPreferences, usePreferences } from '../../state/appStores';
 import { appThemeColor, appThemeColorIds, appThemeColors, useTheme } from '../../theme';
 
@@ -15,6 +18,7 @@ const appearanceModes: { value: AppearanceMode; label: string }[] = [
 /** Settings → App Settings: appearance, accent color, week start. */
 export function AppSettingsScreen() {
   const theme = useTheme();
+  const navigation = useNavigation<NativeStackNavigationProp<SettingsStackParamList>>();
   const prefs = usePreferences((p) => p);
   const accentId = appThemeColor(prefs.appThemeColor);
 
@@ -66,8 +70,8 @@ export function AppSettingsScreen() {
           <SettingsToggleRow title="Week Starts on Monday" value={prefs.weekStartsOnMonday} onValueChange={(v) => setPreferences({ weekStartsOnMonday: v })} />
         </SettingsSection>
 
-        <SettingsSection header="Onboarding" footer="Runs the AI setup step again on next launch.">
-          <SettingsRow title="Redo AI Setup" onPress={() => setPreferences({ hasCompletedOnboarding: false })} chevron={false} />
+        <SettingsSection header="AI Setup" footer="Change the provider, model, key or Hosted AI plan without repeating onboarding.">
+          <SettingsRow title="Redo AI Setup" onPress={() => navigation.navigate('AIAccess')} />
         </SettingsSection>
       </ScrollView>
     </Screen>

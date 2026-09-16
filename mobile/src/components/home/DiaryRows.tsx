@@ -1,9 +1,10 @@
 import React from 'react';
-import { Pressable, View } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
 
 import { fastDurationSeconds, formatFastDuration, formatFastGoal, isFastActive, type FastingSession } from '../../domain/fasting/fasting';
 import type { FoodEntry } from '../../domain/food/food';
 import { formatWater, type WaterEntry, type WaterUnit } from '../../domain/water/water';
+import { foodImageURI } from '../../services/foodImageStore';
 import { useTheme } from '../../theme';
 import { Icon } from '../Icon';
 import { AppText, Row } from '../primitives';
@@ -71,13 +72,18 @@ export function FoodRow({ entry, isFavorite, onPress, onLongPress }: FoodRowProp
   return (
     <Pressable onPress={onPress} onLongPress={onLongPress} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
       <Row style={{ gap: 12, paddingVertical: 4, alignItems: 'center' }}>
-        <Thumb>
-          {entry.emoji ? (
-            <AppText style={{ fontSize: 28, lineHeight: 34 }}>{entry.emoji}</AppText>
-          ) : (
-            <Icon name="fork.knife" size={22} color={theme.colors.accent} />
-          )}
-        </Thumb>
+        {entry.imageFilename ? (
+          // `FoodEntryThumbnailView`: the meal photo takes the thumbnail slot when there is one.
+          <Image source={{ uri: foodImageURI(entry.imageFilename) }} resizeMode="cover" style={{ width: 56, height: 56, borderRadius: 12, backgroundColor: theme.colors.fill }} accessibilityIgnoresInvertColors />
+        ) : (
+          <Thumb>
+            {entry.emoji ? (
+              <AppText style={{ fontSize: 28, lineHeight: 34 }}>{entry.emoji}</AppText>
+            ) : (
+              <Icon name="fork.knife" size={22} color={theme.colors.accent} />
+            )}
+          </Thumb>
+        )}
         <View style={{ flex: 1, gap: 3 }}>
           <Row style={{ justifyContent: 'space-between', gap: 8 }}>
             <Row style={{ gap: 4, flexShrink: 1 }}>

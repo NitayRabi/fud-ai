@@ -6,10 +6,16 @@ import { Platform, StyleSheet, View } from 'react-native';
 
 import { GlassChrome } from '../../modules/glass-chrome';
 import { Icon, type SFSymbolName } from '../components/Icon';
+import { CoachScreen } from '../screens/coach/CoachScreen';
 import { HomeScreen } from '../screens/home/HomeScreen';
-import { PlaceholderScreen } from '../screens/PlaceholderScreen';
+import { ProgressScreen } from '../screens/progress/ProgressScreen';
+import { WorkoutsScreen } from '../screens/workouts/WorkoutsScreen';
 import { AIAccessScreen } from '../screens/settings/AIAccessScreen';
 import { AppSettingsScreen } from '../screens/settings/AppSettingsScreen';
+import { GoalsNutritionScreen } from '../screens/settings/GoalsNutritionScreen';
+import { HealthDataScreen } from '../screens/settings/HealthDataScreen';
+import { NotificationsScreen } from '../screens/settings/NotificationsScreen';
+import { PersonalInfoScreen } from '../screens/settings/PersonalInfoScreen';
 import { SettingsScreen } from '../screens/settings/SettingsScreen';
 import { TrackingRemindersScreen } from '../screens/settings/TrackingRemindersScreen';
 import { useTheme } from '../theme';
@@ -40,9 +46,13 @@ function SettingsStackScreen() {
       }}
     >
       <SettingsStack.Screen name="SettingsHome" component={SettingsScreen} options={{ title: 'Settings', headerLargeTitle: true }} />
+      <SettingsStack.Screen name="PersonalInfo" component={PersonalInfoScreen} options={{ title: 'Personal Info' }} />
+      <SettingsStack.Screen name="GoalsNutrition" component={GoalsNutritionScreen} options={{ title: 'Goals & Nutrition' }} />
       <SettingsStack.Screen name="AIAccess" component={AIAccessScreen} options={{ title: 'AI Access' }} />
       <SettingsStack.Screen name="TrackingReminders" component={TrackingRemindersScreen} options={{ title: 'Tracking & Reminders' }} />
+      <SettingsStack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Notifications' }} />
       <SettingsStack.Screen name="AppSettings" component={AppSettingsScreen} options={{ title: 'App Settings' }} />
+      <SettingsStack.Screen name="HealthData" component={HealthDataScreen} options={{ title: 'Health & Data' }} />
     </SettingsStack.Navigator>
   );
 }
@@ -98,16 +108,10 @@ export function RootNavigator() {
         })}
       >
         <Tab.Screen name="Home" component={HomeScreen} />
-        <Tab.Screen name="Progress">
-          {() => <PlaceholderScreen title="Progress" icon="chart.bar.fill" description="Weight, body fat and nutrition trends are being ported to the shared app." />}
-        </Tab.Screen>
-        <Tab.Screen name="Coach">
-          {() => <PlaceholderScreen title="Coach" icon="bubble.left.and.bubble.right.fill" description="The AI coach chat is being ported to the shared app." />}
-        </Tab.Screen>
+        <Tab.Screen name="Progress" component={ProgressScreen} />
+        <Tab.Screen name="Coach" component={CoachScreen} />
         <Tab.Screen name="Settings" component={SettingsStackScreen} />
-        <Tab.Screen name="Workouts">
-          {() => <PlaceholderScreen title="Workouts" icon="dumbbell" description="Strength logging and the exercise library are being ported to the shared app." />}
-        </Tab.Screen>
+        <Tab.Screen name="Workouts" component={WorkoutsScreen} />
       </Tab.Navigator>
     </NavigationContainer>
   );

@@ -4,14 +4,15 @@ import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { RootNavigator } from './src/navigation/RootNavigator';
-import { AISetupScreen } from './src/screens/onboarding/AISetupScreen';
+import { OnboardingFlow } from './src/screens/onboarding/OnboardingFlow';
 import { HostedPaywallSheet } from './src/screens/paywall/HostedPaywallSheet';
-import { hydrateAndPersistStores, setPreferences, usePreferences } from './src/state/appStores';
+import { installPurchasesAdapter } from './src/services/purchases';
+import { hydrateAndPersistStores, usePreferences } from './src/state/appStores';
 import { appThemeColor, ThemeProvider, useTheme } from './src/theme';
 
 /**
  * Root: hydrate stores, then gate on onboarding exactly like `calorietrackerApp.swift`
- * (`hasCompletedOnboarding`). Only the AI setup step of onboarding is ported so far.
+ * (`hasCompletedOnboarding`): the full 14-step `OnboardingFlow` first, then the tab bar.
  */
 export default function App() {
   const [hydrated, setHydrated] = useState(false);
@@ -19,7 +20,7 @@ export default function App() {
   useEffect(() => {
     let disposed = false;
     let dispose: (() => void) | undefined;
-    hydrateAndPersistStores()
+    const hydration = hydrateAndPersistStores()
       .then((cleanup) => {
         if (disposed) cleanup();
         else dispose = cleanup;
@@ -28,10 +29,15 @@ export default function App() {
         // Storage failures are already reported per store; whatever happened, the app must
         // start with defaults rather than sit on the spinner.
         console.error('[fudai] hydration failed; starting with defaults', error);
-      })
-      .finally(() => {
-        if (!disposed) setHydrated(true);
       });
+    // Purchases only needs the RevenueCat key / native module — run even if hydration rejected.
+    // Do not chain off hydration.then(success); that skips install on rejection.
+    const purchases = installPurchasesAdapter().catch((error: unknown) =>
+      console.warn('[fudai] purchases adapter unavailable', error),
+    );
+    void Promise.all([hydration, purchases]).finally(() => {
+      if (!disposed) setHydrated(true);
+    });
     return () => {
       disposed = true;
       dispose?.();
@@ -66,7 +72,7 @@ function Root({ hydrated }: { hydrated: boolean }) {
         <RootNavigator />
       ) : (
         <>
-          <AISetupScreen onContinue={() => setPreferences({ hasCompletedOnboarding: true })} onShowPaywall={() => setPaywallVisible(true)} />
+          <OnboardingFlow onShowPaywall={() => setPaywallVisible(true)} onComplete={() => setPaywallVisible(false)} />
           <HostedPaywallSheet visible={paywallVisible} onDismiss={() => setPaywallVisible(false)} />
         </>
       )}

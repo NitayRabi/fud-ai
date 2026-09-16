@@ -6,6 +6,8 @@
 import { randomUUID } from 'expo-crypto';
 import { useSyncExternalStore } from 'react';
 
+import { bodyReducer, initialBodyState, latestWeight, type BodyAction, type BodyState, type WeightEntry } from '../domain/body/bodyState';
+import { chatReducer, COACH_CHAT_STORAGE_KEY, initialChatState, type ChatAction, type ChatMessage, type ChatState } from '../domain/coach/coach';
 import { diaryReducer, initialDiaryState, type DiaryAction, type DiaryState } from '../domain/diary/diaryState';
 import { defaultPreferences, mergePreferences, type Preferences } from '../domain/prefs/preferences';
 import { defaultUserProfile, type UserProfile } from '../domain/profile/userProfile';
@@ -17,6 +19,7 @@ import {
   type PurchasesAdapter,
   type PurchasesState,
 } from '../domain/purchases/revenueCat';
+import { initialWorkoutsState, workoutsReducer, type WorkoutsAction, type WorkoutsState } from '../domain/workouts/workoutSessions';
 import { createStore, type Store } from './createStore';
 import { asyncKeyValueStore, readJSON, writeJSON, type KeyValueStore } from './persistence';
 
@@ -24,6 +27,10 @@ export const storageKeys = {
   diary: 'fudai.diary.v1',
   preferences: 'fudai.preferences.v1',
   profile: 'fudai.profile.v1',
+  body: 'fudai.body.v1',
+  workouts: 'fudai.workouts.v1',
+  /** Same key as `ChatStore.swift` so the name lines up with the native UserDefaults blob. */
+  chat: COACH_CHAT_STORAGE_KEY,
 } as const;
 
 export function newId(): string {
@@ -33,6 +40,18 @@ export function newId(): string {
 // MARK: - Diary (food + water + fasting)
 
 export const diaryStore: Store<DiaryState, DiaryAction> = createStore(diaryReducer, initialDiaryState);
+
+// MARK: - Body (weight + body fat history)
+
+export const bodyStore: Store<BodyState, BodyAction> = createStore(bodyReducer, initialBodyState);
+
+// MARK: - Workouts (strength log + drafts + preferences)
+
+export const workoutsStore: Store<WorkoutsState, WorkoutsAction> = createStore(workoutsReducer, initialWorkoutsState);
+
+// MARK: - Coach chat
+
+export const chatStore: Store<ChatState, ChatAction> = createStore(chatReducer, initialChatState);
 
 // MARK: - Preferences
 
@@ -69,6 +88,32 @@ function profileReducer(state: UserProfile, action: ProfileAction): UserProfile 
 }
 
 export const profileStore: Store<UserProfile, ProfileAction> = createStore(profileReducer, defaultUserProfile);
+
+// MARK: - Weigh-ins (body history + profile stay aligned)
+
+/**
+ * `WeightStore.addEntry` / `deleteEntry` + `syncProfileWeightToLatest`: every weigh-in goes
+ * through here so `UserProfile.weightKg` (BMR / TDEE / targets / Coach) always matches the
+ * newest entry Progress shows. An empty history leaves the profile alone — the formulas
+ * still need some weight.
+ */
+export function addWeighIn(entry: WeightEntry): void {
+  bodyStore.dispatch({ type: 'weight/add', entry });
+  syncProfileWeightToLatest();
+}
+
+export function deleteWeighIn(id: string): void {
+  bodyStore.dispatch({ type: 'weight/delete', id });
+  syncProfileWeightToLatest();
+}
+
+function syncProfileWeightToLatest(): void {
+  const newest = latestWeight(bodyStore.getState());
+  if (!newest) return;
+  if (Math.abs(profileStore.getState().weightKg - newest.weightKg) > 0.01) {
+    profileStore.dispatch({ type: 'update', patch: { weightKg: newest.weightKg } });
+  }
+}
 
 // MARK: - Purchases (RevenueCat)
 
@@ -159,6 +204,18 @@ export function useDiary<T>(selector: (state: DiaryState) => T): T {
   return useStoreSelector(diaryStore, selector);
 }
 
+export function useBody<T>(selector: (state: BodyState) => T): T {
+  return useStoreSelector(bodyStore, selector);
+}
+
+export function useWorkouts<T>(selector: (state: WorkoutsState) => T): T {
+  return useStoreSelector(workoutsStore, selector);
+}
+
+export function useChat<T>(selector: (state: ChatState) => T): T {
+  return useStoreSelector(chatStore, selector);
+}
+
 export function usePreferences<T>(selector: (state: Preferences) => T): T {
   return useStoreSelector(preferencesStore, selector);
 }
@@ -178,6 +235,17 @@ interface PersistedDiary {
   waterEntries: DiaryState['waterEntries'];
   fastingSessions: DiaryState['fastingSessions'];
   favoriteKeys: DiaryState['favoriteKeys'];
+}
+
+interface PersistedBody {
+  weightEntries: BodyState['weightEntries'];
+  bodyFatEntries: BodyState['bodyFatEntries'];
+}
+
+interface PersistedWorkouts {
+  sessions: WorkoutsState['sessions'];
+  drafts: WorkoutsState['drafts'];
+  preferences: WorkoutsState['preferences'];
 }
 
 export type PersistenceFailure = { phase: 'read' | 'write'; key: string; error: unknown };
@@ -228,15 +296,21 @@ async function readStore<T>(kv: KeyValueStore, key: string): Promise<StoreRead<T
  * every failure goes through `reportPersistenceFailure`.
  */
 export async function hydrateAndPersistStores(kv: KeyValueStore = asyncKeyValueStore): Promise<() => void> {
-  const [diary, preferences, profile] = await Promise.all([
+  const [diary, preferences, profile, body, workouts, chat] = await Promise.all([
     readStore<PersistedDiary>(kv, storageKeys.diary),
     readStore<Partial<Preferences>>(kv, storageKeys.preferences),
     readStore<UserProfile>(kv, storageKeys.profile),
+    readStore<PersistedBody>(kv, storageKeys.body),
+    readStore<PersistedWorkouts>(kv, storageKeys.workouts),
+    readStore<ChatMessage[]>(kv, storageKeys.chat),
   ]);
+  if (Array.isArray(chat.value)) chatStore.dispatch({ type: 'hydrate', messages: chat.value });
 
   if (diary.value) diaryStore.dispatch({ type: 'hydrate', state: diary.value });
   preferencesStore.dispatch({ type: 'hydrate', preferences: mergePreferences(preferences.value) });
   if (profile.value) profileStore.dispatch({ type: 'hydrate', profile: { ...defaultUserProfile, ...profile.value } });
+  if (body.value) bodyStore.dispatch({ type: 'hydrate', state: body.value });
+  if (workouts.value) workoutsStore.dispatch({ type: 'hydrate', state: workouts.value });
 
   const unsubscribes: (() => void)[] = [];
   if (diary.readable) {
@@ -251,6 +325,17 @@ export async function hydrateAndPersistStores(kv: KeyValueStore = asyncKeyValueS
   }
   if (preferences.readable) unsubscribes.push(persistOnChange(preferencesStore, kv, storageKeys.preferences, (state) => state));
   if (profile.readable) unsubscribes.push(persistOnChange(profileStore, kv, storageKeys.profile, (state) => state));
+  if (body.readable) {
+    unsubscribes.push(
+      persistOnChange(bodyStore, kv, storageKeys.body, (state): PersistedBody => ({ weightEntries: state.weightEntries, bodyFatEntries: state.bodyFatEntries })),
+    );
+  }
+  if (workouts.readable) {
+    unsubscribes.push(
+      persistOnChange(workoutsStore, kv, storageKeys.workouts, (state): PersistedWorkouts => ({ sessions: state.sessions, drafts: state.drafts, preferences: state.preferences })),
+    );
+  }
+  if (chat.readable) unsubscribes.push(persistOnChange(chatStore, kv, storageKeys.chat, (state) => state.messages));
 
   return () => unsubscribes.forEach((fn) => fn());
 }

@@ -27,6 +27,12 @@ interface AISetupScreenProps {
   onContinue: () => void;
   /** Present the hosted paywall (`HostedPaywallSheet`); continuing on Hosted needs an entitlement. */
   onShowPaywall?: () => void;
+  /** Rendered inside the onboarding flow, which already provides the top safe area and header. */
+  embedded?: boolean;
+  /** Lets the flow's back chevron step Hosted/BYOK back to the choice first, like iOS. */
+  onSubstepChange?: (substep: AISetupSubstep) => void;
+  /** Externally requested return to the choice (from the flow header). */
+  resetToChoiceToken?: number;
 }
 
 /**
@@ -35,11 +41,17 @@ interface AISetupScreenProps {
  * Fixes #373: the key field placeholder is an instruction ("Paste Gemini API key"), never a
  * key-shaped prefix, and when the CTA is disabled a helper line says exactly what is missing.
  */
-export function AISetupScreen({ onContinue, onShowPaywall }: AISetupScreenProps) {
+export function AISetupScreen({ onContinue, onShowPaywall, embedded = false, onSubstepChange, resetToChoiceToken }: AISetupScreenProps) {
   const theme = useTheme();
   const purchases = usePurchases((s) => s);
 
   const [substep, setSubstep] = useState<AISetupSubstep>('choice');
+  useEffect(() => {
+    onSubstepChange?.(substep);
+  }, [substep, onSubstepChange]);
+  useEffect(() => {
+    if (resetToChoiceToken !== undefined && resetToChoiceToken > 0) setSubstep('choice');
+  }, [resetToChoiceToken]);
   const [provider, setProvider] = useState<AIProviderDefinition>(aiProviders.gemini);
   const [model, setModel] = useState(defaultModel(aiProviders.gemini));
   const [apiKey, setApiKey] = useState('');
@@ -147,8 +159,8 @@ export function AISetupScreen({ onContinue, onShowPaywall }: AISetupScreenProps)
   };
 
   return (
-    <Screen edges={['top', 'left', 'right', 'bottom']}>
-      <ScrollView contentContainerStyle={{ paddingTop: theme.spacing.xl, paddingBottom: 20, gap: 18 }} keyboardShouldPersistTaps="handled">
+    <Screen edges={embedded ? ['left', 'right', 'bottom'] : ['top', 'left', 'right', 'bottom']}>
+      <ScrollView contentContainerStyle={{ paddingTop: embedded ? theme.spacing.md : theme.spacing.xl, paddingBottom: 20, gap: 18 }} keyboardShouldPersistTaps="handled">
         {/* Header */}
         <View style={{ alignItems: 'center', gap: 18 }}>
           <View style={{ width: 104, height: 104, borderRadius: 52, backgroundColor: theme.colors.fill, alignItems: 'center', justifyContent: 'center' }}>
