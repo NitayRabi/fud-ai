@@ -207,13 +207,28 @@ describe('food analysis parsing', () => {
     expect(() => parseFoodAnalysis('not json at all', () => 'id')).toThrowError(/understand the AI response/);
   });
 
-  it('scales an analysis to a new gram amount', () => {
+  it('rejects negative totals and drops negative optional nutrients or a non-positive mass', () => {
+    expect(() => parseFoodAnalysis(JSON.stringify({ ...sample, calories: -100 }), () => 'id')).toThrowError(AIError);
+    expect(() => parseFoodAnalysis(JSON.stringify({ ...sample, fat: -0.5 }), () => 'id')).toThrowError(AIError);
+    const odd = parseFoodAnalysis(JSON.stringify({ ...sample, fiber: -3, creatine: -1, serving_size_grams: 0, unit_options: [] }), () => 'id');
+    expect(odd.fiber).toBeUndefined();
+    expect(odd.supplementalNutrients).toEqual({});
+    expect(odd.servingSizeIsKnown).toBe(false);
+    expect(odd.servingSizeGrams).toBe(1);
+  });
+
+  it('scales an analysis to a new gram amount, including the serving-unit count', () => {
     const analysis = parseFoodAnalysis(JSON.stringify(sample), () => 'id');
     const half = scaledAnalysis(analysis, 100);
     expect(half.calories).toBe(90);
     expect(half.protein).toBe(7.5);
     expect(half.fiber).toBe(1.5);
     expect(half.ingredients[0]?.grams).toBe(75);
+    // 1 cup at 200 g is half a cup at 100 g; grams per cup is a property of the unit and stays.
+    expect(half.selectedServingUnit).toBe('cup');
+    expect(half.selectedServingQuantity).toBe(0.5);
+    expect(half.servingUnitOptions).toEqual([{ unit: 'cup', gramsPerUnit: 200, quantity: 0.5 }]);
+    expect(scaledAnalysis(half, 400).selectedServingQuantity).toBe(2);
   });
 
   it('builds the text and photo prompts with the shared JSON shape', () => {

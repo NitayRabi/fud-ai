@@ -120,9 +120,10 @@ export function strictNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+/** Optional nutrients: finite and non-negative, otherwise treated as not reported. */
 function optional(json: JSONObject, key: string): number | undefined {
   const n = strictNumber(json[key]);
-  return n === undefined ? undefined : n;
+  return n === undefined || n < 0 ? undefined : n;
 }
 
 /** Sports-nutrition compounds: JSON key → `SupplementalNutrient.rawValue`. */
@@ -191,8 +192,13 @@ export function parseFoodAnalysis(text: string, makeId: () => string): FoodAnaly
   if (!json || !name || calories === undefined || protein === undefined || carbs === undefined || fat === undefined) {
     throw new AIError('invalidResponse');
   }
+  // The review sheet cannot correct these four, so a negative total is a broken response,
+  // not something to persist.
+  if ([calories, protein, carbs, fat].some((value) => value < 0)) throw new AIError('invalidResponse');
 
-  const responseServing = strictNumber(json.serving_size_grams);
+  const rawServing = strictNumber(json.serving_size_grams);
+  // A zero or negative mass is "unknown", never a divisor for the serving editor.
+  const responseServing = rawServing !== undefined && rawServing > 0 ? rawServing : undefined;
   const servingSizeGrams = responseServing ?? 1;
   const units = parseServingUnitOptions(json, responseServing);
   const selected = units.options[0];
@@ -265,7 +271,12 @@ function defined<K extends string>(key: K, value: number | undefined): { [P in K
   return value === undefined ? {} : ({ [key]: value } as { [P in K]?: number });
 }
 
-/** Scale an analysis to a new gram amount (`FoodResultView` serving editor). */
+/**
+ * Scale an analysis to a new gram amount (`FoodResultView` serving editor). Everything that
+ * describes the analyzed amount moves with the grams: nutrition, ingredients, and the
+ * serving-unit count (`quantity` is "units in the whole amount", so 2 slices at 100 g become
+ * 4 slices at 200 g); `gramsPerUnit` is a property of the unit and stays.
+ */
 export function scaledAnalysis(analysis: FoodAnalysis, grams: number): FoodAnalysis {
   if (!analysis.servingSizeIsKnown || analysis.servingSizeGrams <= 0 || grams <= 0) return analysis;
   const factor = grams / analysis.servingSizeGrams;
@@ -277,6 +288,8 @@ export function scaledAnalysis(analysis: FoodAnalysis, grams: number): FoodAnaly
     carbs: scale(analysis.carbs) ?? 0,
     fat: scale(analysis.fat) ?? 0,
     servingSizeGrams: grams,
+    servingUnitOptions: analysis.servingUnitOptions.map((option) => ({ ...option, quantity: scale(option.quantity) ?? option.quantity })),
+    ...(analysis.selectedServingQuantity !== undefined ? { selectedServingQuantity: scale(analysis.selectedServingQuantity) ?? analysis.selectedServingQuantity } : {}),
     ingredients: analysis.ingredients.map((i) => ({
       ...i,
       grams: scale(i.grams) ?? i.grams,

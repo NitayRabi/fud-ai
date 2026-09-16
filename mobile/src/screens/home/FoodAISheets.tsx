@@ -205,9 +205,9 @@ export function FoodResultSheet({ visible, analysis, imageUri, onDismiss, onSave
             g
           </AppText>
         </Row>
-        {analysis.selectedServingUnit && analysis.selectedServingQuantity ? (
+        {scaled.selectedServingUnit && scaled.selectedServingQuantity ? (
           <AppText variant="caption" tone="secondary" align="right">
-            ≈ {formatGrams(analysis.selectedServingQuantity)} {analysis.selectedServingUnit}
+            ≈ {formatGrams(scaled.selectedServingQuantity)} {scaled.selectedServingUnit}
           </AppText>
         ) : null}
         <Divider />
