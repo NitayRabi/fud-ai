@@ -100,11 +100,36 @@ export const profileStore: Store<UserProfile, ProfileAction> = createStore(profi
 export function addWeighIn(entry: WeightEntry): void {
   bodyStore.dispatch({ type: 'weight/add', entry });
   syncProfileWeightToLatest();
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { writeWeightToHealth } = require('../services/health') as typeof import('../services/health');
+    writeWeightToHealth(entry.weightKg, new Date(entry.date), entry.id);
+  } catch {
+    /* Expo Go / tests */
+  }
 }
 
 export function deleteWeighIn(id: string): void {
   bodyStore.dispatch({ type: 'weight/delete', id });
   syncProfileWeightToLatest();
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { deleteWeightFromHealth } = require('../services/health') as typeof import('../services/health');
+    deleteWeightFromHealth(id);
+  } catch {
+    /* Expo Go / tests */
+  }
+}
+
+export function deleteBodyFatEntry(id: string): void {
+  bodyStore.dispatch({ type: 'bodyFat/delete', id });
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { deleteBodyFatFromHealth } = require('../services/health') as typeof import('../services/health');
+    deleteBodyFatFromHealth(id);
+  } catch {
+    /* Expo Go / tests */
+  }
 }
 
 function syncProfileWeightToLatest(): void {
