@@ -5,9 +5,10 @@ import { AppText, Card, Row, Screen } from '../../components/primitives';
 import { SettingsRow, SettingsSection } from '../../components/SettingsRow';
 import { aiModeDisplayName, dailyLimit, hostedPlanDisplayName, type AIMode } from '../../domain/ai/hosted';
 import { apiKeySecretName, resolveVisionSelection } from '../../domain/ai/settings';
-import { refreshCustomerInfo, setPreferences, usePreferences, usePurchases } from '../../state/appStores';
+import { refreshCustomerInfo, restorePurchases, setPreferences, usePreferences, usePurchases } from '../../state/appStores';
 import { secureSecretStore } from '../../state/persistence';
 import { useTheme } from '../../theme';
+import { HostedPaywallSheet } from '../paywall/HostedPaywallSheet';
 
 const platform = Platform.OS === 'ios' ? 'ios' : 'android';
 
@@ -21,13 +22,20 @@ export function AIAccessScreen() {
   const purchases = usePurchases((p) => p);
   const selection = resolveVisionSelection(platform, prefs.selectedAIProvider, prefs.selectedAIModel);
   const [hasKey, setHasKey] = useState<boolean | undefined>(undefined);
+  const [paywallVisible, setPaywallVisible] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     void refreshCustomerInfo();
-    void secureSecretStore.get(apiKeySecretName(selection.provider)).then((key) => {
-      if (!cancelled) setHasKey(!!key);
-    });
+    void secureSecretStore
+      .get(apiKeySecretName(selection.provider))
+      .then((key) => {
+        if (!cancelled) setHasKey(!!key);
+      })
+      .catch(() => {
+        if (!cancelled) setHasKey(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -35,10 +43,25 @@ export function AIAccessScreen() {
 
   const setMode = (mode: AIMode) => {
     if (mode === 'hosted' && !purchases.hasHostedEntitlement) {
-      Alert.alert('Hosted AI', 'Subscribe to Plus or Pro to use Hosted AI. The paywall is being ported to the shared app.');
+      setPaywallVisible(true);
       return;
     }
     setPreferences({ aiAccessMode: mode });
+  };
+
+  // `HostedAISettingsView` "Restore Purchases": a real store restore, then an alert with the result.
+  const restore = async () => {
+    if (isRestoring) return;
+    setIsRestoring(true);
+    try {
+      const entitled = await restorePurchases();
+      Alert.alert(
+        'Restore Purchases',
+        entitled ? 'Your subscription has been restored.' : 'No active Plus or Pro subscription was found for this account.',
+      );
+    } finally {
+      setIsRestoring(false);
+    }
   };
 
   return (
@@ -91,7 +114,13 @@ export function AIAccessScreen() {
         <SettingsSection header="Hosted AI" footer="Hosted usage is metered by the Fud AI service; credits are never granted on device.">
           <SettingsRow icon="checkmark.seal.fill" title="Plan" value={hostedPlanDisplayName(purchases.activePlan)} chevron={false} />
           <SettingsRow icon="bolt.horizontal.circle.fill" title="Daily actions" value={purchases.hasHostedEntitlement ? `${dailyLimit(purchases.activePlan)} / day` : '—'} chevron={false} />
-          <SettingsRow icon="arrow.triangle.2.circlepath.circle.fill" title="Restore Purchases" onPress={() => void refreshCustomerInfo()} chevron={false} />
+          <SettingsRow
+            icon="arrow.triangle.2.circlepath.circle.fill"
+            title="Restore Purchases"
+            value={isRestoring ? 'Restoring…' : undefined}
+            onPress={() => void restore()}
+            chevron={false}
+          />
         </SettingsSection>
 
         {purchases.lastError ? (
@@ -102,6 +131,8 @@ export function AIAccessScreen() {
           </Row>
         ) : null}
       </ScrollView>
+
+      <HostedPaywallSheet visible={paywallVisible} onDismiss={() => setPaywallVisible(false)} onEntitled={() => setPreferences({ aiAccessMode: 'hosted' })} />
     </Screen>
   );
 }
