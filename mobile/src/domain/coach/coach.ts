@@ -49,6 +49,22 @@ export const MAX_MESSAGES_IN_CONTEXT = 20;
 export const MAX_PERSISTED_MESSAGES = 200;
 export const MAX_PERSISTED_ATTACHMENTS = 12;
 
+/**
+ * Persisted records are untrusted input: a `null` or half-written entry must not break
+ * hydration or the send path, which reads `role` and `content` from every history message.
+ */
+export function isChatMessage(value: unknown): value is ChatMessage {
+  if (value === null || typeof value !== 'object') return false;
+  const m = value as Record<string, unknown>;
+  return (
+    typeof m.id === 'string' &&
+    (m.role === 'user' || m.role === 'assistant') &&
+    typeof m.content === 'string' &&
+    typeof m.timestamp === 'string' &&
+    (m.attachmentImageBase64 === undefined || typeof m.attachmentImageBase64 === 'string')
+  );
+}
+
 export interface ChatState {
   messages: readonly ChatMessage[];
   revision: number;
@@ -87,7 +103,7 @@ export function boundedMessages(messages: readonly ChatMessage[]): readonly Chat
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
     case 'hydrate':
-      return { ...state, messages: boundedMessages(action.messages) };
+      return { ...state, messages: boundedMessages(action.messages.filter(isChatMessage)) };
     case 'append':
       if (state.messages.some((m) => m.id === action.message.id)) return state;
       return { messages: boundedMessages([...state.messages, action.message]), revision: state.revision + 1 };

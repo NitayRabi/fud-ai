@@ -56,13 +56,32 @@ export function isValidBodyFatFraction(fraction: number): boolean {
   return Number.isFinite(fraction) && fraction >= bodyFatLimits.min && fraction <= bodyFatLimits.max;
 }
 
+function hasRecordShape(value: unknown): value is Record<string, unknown> & { id: string; date: string } {
+  if (value === null || typeof value !== 'object') return false;
+  const r = value as Record<string, unknown>;
+  return typeof r.id === 'string' && typeof r.date === 'string';
+}
+
+/** Persisted records are untrusted: sorting or rendering a `null` / dateless entry must never throw. */
+export function isWeightEntry(value: unknown): value is WeightEntry {
+  return hasRecordShape(value) && typeof value.weightKg === 'number' && isValidWeightKg(value.weightKg);
+}
+
+export function isBodyFatEntry(value: unknown): value is BodyFatEntry {
+  return hasRecordShape(value) && typeof value.bodyFatFraction === 'number' && isValidBodyFatFraction(value.bodyFatFraction);
+}
+
+function validEntries<T>(value: unknown, guard: (item: unknown) => item is T): T[] | undefined {
+  return Array.isArray(value) ? value.filter(guard) : undefined;
+}
+
 export function bodyReducer(state: BodyState, action: BodyAction): BodyState {
   switch (action.type) {
     case 'hydrate':
       return {
         ...state,
-        weightEntries: [...(action.state.weightEntries ?? state.weightEntries)].sort(byDate),
-        bodyFatEntries: [...(action.state.bodyFatEntries ?? state.bodyFatEntries)].sort(byDate),
+        weightEntries: [...(validEntries(action.state.weightEntries, isWeightEntry) ?? state.weightEntries)].sort(byDate),
+        bodyFatEntries: [...(validEntries(action.state.bodyFatEntries, isBodyFatEntry) ?? state.bodyFatEntries)].sort(byDate),
       };
     case 'weight/add':
       if (!isValidWeightKg(action.entry.weightKg)) return state;

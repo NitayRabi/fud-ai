@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { bodyReducer, entriesInRange, formatWeight, initialBodyState, latestWeight, weightKgFromDisplay } from '../src/domain/body/bodyState';
+import { bodyReducer, entriesInRange, formatWeight, initialBodyState, isBodyFatEntry, isWeightEntry, latestWeight, weightKgFromDisplay } from '../src/domain/body/bodyState';
 import { makeFoodEntry } from '../src/domain/food/food';
 import {
   availableProgressMetrics,
@@ -39,6 +39,20 @@ describe('body state', () => {
     expect(bodyReducer(state, { type: 'bodyFat/add', entry: { id: 'f', date: day(0).toISOString(), bodyFatFraction: 0.9 } })).toBe(state);
     const withFat = bodyReducer(state, { type: 'bodyFat/add', entry: { id: 'f', date: day(0).toISOString(), bodyFatFraction: 0.22 } });
     expect(withFat.bodyFatEntries).toHaveLength(1);
+  });
+
+  it('drops malformed persisted records on hydrate instead of throwing', () => {
+    const state = bodyReducer(initialBodyState, {
+      type: 'hydrate',
+      state: {
+        weightEntries: [null, { id: 'x' }, { id: 'no-date', weightKg: 80 }, { id: 'bad-kg', date: day(0).toISOString(), weightKg: 'heavy' }, { id: 'ok', date: day(-1).toISOString(), weightKg: 80 }] as unknown as never,
+        bodyFatEntries: 'not an array' as unknown as never,
+      },
+    });
+    expect(state.weightEntries.map((e) => e.id)).toEqual(['ok']);
+    expect(state.bodyFatEntries).toEqual([]);
+    expect(isWeightEntry({ id: 'a', date: 'd', weightKg: 70 })).toBe(true);
+    expect(isBodyFatEntry({ id: 'a', date: 'd', bodyFatFraction: 0.9 })).toBe(false);
   });
 
   it('filters by local calendar day and converts units', () => {

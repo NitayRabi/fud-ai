@@ -6,6 +6,7 @@ import {
   chatReducer,
   contextMessages,
   initialChatState,
+  isChatMessage,
   MAX_PERSISTED_ATTACHMENTS,
   MAX_PERSISTED_MESSAGES,
   suggestedPrompts,
@@ -91,6 +92,17 @@ describe('coach chat', () => {
     expect(chatReducer(initialChatState, { type: 'hydrate', messages: legacy }).messages.filter((m) => m.attachmentImageBase64).length).toBe(MAX_PERSISTED_ATTACHMENTS);
     const small = [photo('a'), message('b', 'assistant')];
     expect(boundedMessages(small)).toBe(small);
+  });
+
+  it('drops malformed persisted records on hydrate', () => {
+    const good = { ...message('ok', 'user'), attachmentImageBase64: 'AAA' };
+    const hydrated = chatReducer(initialChatState, {
+      type: 'hydrate',
+      messages: [null, { id: 1, role: 'user' }, { id: 'x', role: 'system', content: 'c', timestamp: 't' }, { ...good, attachmentImageBase64: 42 }, good, message('a', 'assistant')] as unknown as ChatMessage[],
+    });
+    expect(hydrated.messages.map((m) => m.id)).toEqual(['ok', 'a']);
+    expect(isChatMessage(good)).toBe(true);
+    expect(isChatMessage({ ...good, content: undefined })).toBe(false);
   });
 
   it('suggests goal-specific prompts and a training prompt when workouts exist', () => {
