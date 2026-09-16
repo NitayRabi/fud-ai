@@ -4,7 +4,7 @@
  * (`ProgressMetric`) plus `ProgressOverviewMode` in `WeeklyChallenge.swift`.
  */
 
-import { addDays, dayKey, startOfDay } from '../dates';
+import { addDays, dateFromDayKey, dayKey, startOfDay } from '../dates';
 import { homeNutrients, homeNutrientGoal, type OptionalNutrientGoals } from '../diary/homeNutrients';
 import { foodEntryDate, type FoodEntry } from '../food/food';
 import { homeTopNutrientIds, type HomeTopNutrientId } from '../prefs/preferences';
@@ -67,6 +67,36 @@ export function timeRangeDays(range: TimeRange): number {
 export function timeRangeDates(range: TimeRange, now: Date = new Date()): { start: Date; end: Date } {
   const end = startOfDay(now);
   return { start: addDays(end, -(timeRangeDays(range) - 1)), end };
+}
+
+// MARK: - Day axis (bar charts)
+
+export interface DayAxis {
+  /** Calendar days from the first to the last plotted day, inclusive (≥ 1). */
+  dayCount: number;
+  /** Zero-based calendar offset of a day key from the first plotted day. */
+  offset: (day: string) => number;
+  /** Day keys that get an x-axis label (~`desiredTicks`, calendar-spaced). */
+  ticks: string[];
+}
+
+/**
+ * The x-axis Swift Charts derives from `BarMark(x: .value("Date", date, unit: .day))`: bars sit
+ * at their calendar position between the first and last plotted day, so two logs a month apart
+ * are a month apart on screen, not neighbours. Labels are spaced like `AxisMarks(desiredCount:)`.
+ */
+export function dayAxis(days: readonly string[], desiredTicks = 5): DayAxis {
+  const sorted = [...days].sort();
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  if (first === undefined || last === undefined) return { dayCount: 1, offset: () => 0, ticks: [] };
+  const origin = startOfDay(dateFromDayKey(first)).getTime();
+  const offset = (day: string) => Math.max(0, Math.round((startOfDay(dateFromDayKey(day)).getTime() - origin) / 86_400_000));
+  const dayCount = offset(last) + 1;
+  const step = dayCount <= 7 ? 1 : Math.ceil(dayCount / desiredTicks);
+  const ticks: string[] = [];
+  for (let i = 0; i < dayCount; i += step) ticks.push(dayKey(addDays(dateFromDayKey(first), i)));
+  return { dayCount, offset, ticks };
 }
 
 // MARK: - Trend points

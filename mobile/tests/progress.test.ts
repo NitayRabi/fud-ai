@@ -5,6 +5,7 @@ import { makeFoodEntry } from '../src/domain/food/food';
 import {
   availableProgressMetrics,
   computeFoodRangeStats,
+  dayAxis,
   downsampleTrend,
   loggingStats,
   netChange,
@@ -164,5 +165,25 @@ describe('weekly challenge score', () => {
       overallPoints: 7,
       activityKcal: 2000,
     });
+  });
+});
+
+describe('day axis', () => {
+  it('places bars at their calendar offset so sparse days leave gaps, and spaces labels', () => {
+    const axis = dayAxis(['2026-09-30', '2026-09-01', '2026-09-02']);
+    expect(axis.dayCount).toBe(30);
+    expect(axis.offset('2026-09-01')).toBe(0);
+    expect(axis.offset('2026-09-02')).toBe(1);
+    expect(axis.offset('2026-09-30')).toBe(29);
+    // ~5 labels, calendar-spaced from the first plotted day.
+    expect(axis.ticks).toEqual(['2026-09-01', '2026-09-07', '2026-09-13', '2026-09-19', '2026-09-25']);
+
+    const week = dayAxis(['2026-09-10', '2026-09-16']);
+    expect(week.dayCount).toBe(7);
+    expect(week.ticks).toHaveLength(7);
+
+    const single = dayAxis(['2026-09-16']);
+    expect(single).toMatchObject({ dayCount: 1, ticks: ['2026-09-16'] });
+    expect(dayAxis([])).toMatchObject({ dayCount: 1, ticks: [] });
   });
 });

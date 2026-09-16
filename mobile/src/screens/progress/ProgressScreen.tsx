@@ -18,7 +18,6 @@ import { AppText, Card, Row, Screen } from '../../components/primitives';
 import { ProgressBarRow } from '../../components/ProgressBarRow';
 import { PillTabs, SegmentedControl } from '../../components/SegmentedControl';
 import { displayWeight, entriesInRange, latestBodyFat, latestWeight } from '../../domain/body/bodyState';
-import { dateFromDayKey } from '../../domain/dates';
 import {
   availableProgressMetrics,
   average,
@@ -154,7 +153,7 @@ export function ProgressScreen() {
               ) : (
                 <>
                   <BarChart
-                    data={dailyBurn(burnInRange).map((d) => ({ id: d.day, label: dateFromDayKey(d.day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), value: d.calories }))}
+                    data={dailyBurn(burnInRange).map((d) => ({ id: d.day, value: d.calories }))}
                   />
                   <View style={{ gap: 8 }}>
                     {[...burnInRange].reverse().slice(0, 5).map((session) => (
@@ -205,7 +204,7 @@ export function ProgressScreen() {
               <EmptyChart text="No food logged yet" />
             ) : (
               <BarChart
-                data={foodStats.dailyCalories.map((d) => ({ id: d.day, label: dateFromDayKey(d.day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), value: d.calories }))}
+                data={foodStats.dailyCalories.map((d) => ({ id: d.day, value: d.calories }))}
                 goal={targets.calories}
               />
             )}
