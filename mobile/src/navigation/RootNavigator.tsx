@@ -8,6 +8,7 @@ import { GlassChrome } from '../../modules/glass-chrome';
 import { Icon, type SFSymbolName } from '../components/Icon';
 import { HomeScreen } from '../screens/home/HomeScreen';
 import { PlaceholderScreen } from '../screens/PlaceholderScreen';
+import { ProgressScreen } from '../screens/progress/ProgressScreen';
 import { AIAccessScreen } from '../screens/settings/AIAccessScreen';
 import { AppSettingsScreen } from '../screens/settings/AppSettingsScreen';
 import { SettingsScreen } from '../screens/settings/SettingsScreen';
@@ -98,9 +99,7 @@ export function RootNavigator() {
         })}
       >
         <Tab.Screen name="Home" component={HomeScreen} />
-        <Tab.Screen name="Progress">
-          {() => <PlaceholderScreen title="Progress" icon="chart.bar.fill" description="Weight, body fat and nutrition trends are being ported to the shared app." />}
-        </Tab.Screen>
+        <Tab.Screen name="Progress" component={ProgressScreen} />
         <Tab.Screen name="Coach">
           {() => <PlaceholderScreen title="Coach" icon="bubble.left.and.bubble.right.fill" description="The AI coach chat is being ported to the shared app." />}
         </Tab.Screen>
