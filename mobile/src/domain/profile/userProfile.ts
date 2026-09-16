@@ -13,6 +13,67 @@ export type Macro = 'protein' | 'carbs' | 'fat';
 
 export const KILOCALORIES_PER_KILOGRAM = 7_700;
 
+export const genders: readonly Gender[] = ['male', 'female', 'other'];
+export const activityLevels: readonly ActivityLevel[] = ['sedentary', 'light', 'moderate', 'active', 'veryActive', 'extraActive'];
+export const weightGoals: readonly WeightGoal[] = ['lose', 'maintain', 'gain'];
+
+export function genderDisplayName(gender: Gender): string {
+  switch (gender) {
+    case 'male':
+      return 'Male';
+    case 'female':
+      return 'Female';
+    case 'other':
+      return 'Other';
+  }
+}
+
+export function activityLevelDisplayName(level: ActivityLevel): string {
+  switch (level) {
+    case 'sedentary':
+      return 'Sedentary';
+    case 'light':
+      return 'Light';
+    case 'moderate':
+      return 'Moderate';
+    case 'active':
+      return 'Active';
+    case 'veryActive':
+      return 'Very Active';
+    case 'extraActive':
+      return 'Extra Active';
+  }
+}
+
+/** `ActivityLevel.subtitle` — the step-guide copy shown on the onboarding selection cards. */
+export function activityLevelSubtitle(level: ActivityLevel): string {
+  switch (level) {
+    case 'sedentary':
+      return 'Mostly seated at work and home; little or no planned exercise.\nApprox. step guide: under 5,000 steps/day.';
+    case 'light':
+      return 'Mostly seated; light exercise or casual activity 1–3 days/week.\nApprox. step guide: 5,000–7,499 steps/day.';
+    case 'moderate':
+      return 'Regular gym, cardio, climbing, cycling, or sport 3–5 days/week.\nApprox. step guide: 7,500–9,999 steps/day.';
+    case 'active':
+      return 'Training most days, or a job with substantial standing, movement, or lifting.\nApprox. step guide: 10,000–12,499 steps/day.';
+    case 'veryActive':
+      return 'Hard training 6–7 days/week, endurance training, or demanding physical work.\nApprox. step guide: 12,500–14,999 steps/day.';
+    case 'extraActive':
+      return 'Competitive/high-volume athlete, twice-daily training, or heavy manual work plus frequent training.\nApprox. step guide: 15,000+ steps/day.';
+  }
+}
+
+export function weightGoalDisplayName(goal: WeightGoal): string {
+  switch (goal) {
+    case 'lose':
+      return 'Lose Weight / Cutting';
+    case 'maintain':
+      return 'Maintain / Recomp';
+    case 'gain':
+      return 'Gain Weight / Bulking';
+  }
+}
+
 export const activityMultiplier: Record<ActivityLevel, number> = {
   sedentary: 1.2,
   light: 1.375,

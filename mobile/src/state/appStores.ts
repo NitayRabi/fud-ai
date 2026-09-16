@@ -7,6 +7,7 @@ import { randomUUID } from 'expo-crypto';
 import { useSyncExternalStore } from 'react';
 
 import { bodyReducer, initialBodyState, type BodyAction, type BodyState } from '../domain/body/bodyState';
+import { chatReducer, COACH_CHAT_STORAGE_KEY, initialChatState, type ChatAction, type ChatMessage, type ChatState } from '../domain/coach/coach';
 import { diaryReducer, initialDiaryState, type DiaryAction, type DiaryState } from '../domain/diary/diaryState';
 import { defaultPreferences, mergePreferences, type Preferences } from '../domain/prefs/preferences';
 import { defaultUserProfile, type UserProfile } from '../domain/profile/userProfile';
@@ -28,6 +29,8 @@ export const storageKeys = {
   profile: 'fudai.profile.v1',
   body: 'fudai.body.v1',
   workouts: 'fudai.workouts.v1',
+  /** Same key as `ChatStore.swift` so the name lines up with the native UserDefaults blob. */
+  chat: COACH_CHAT_STORAGE_KEY,
 } as const;
 
 export function newId(): string {
@@ -45,6 +48,10 @@ export const bodyStore: Store<BodyState, BodyAction> = createStore(bodyReducer, 
 // MARK: - Workouts (strength log + drafts + preferences)
 
 export const workoutsStore: Store<WorkoutsState, WorkoutsAction> = createStore(workoutsReducer, initialWorkoutsState);
+
+// MARK: - Coach chat
+
+export const chatStore: Store<ChatState, ChatAction> = createStore(chatReducer, initialChatState);
 
 // MARK: - Preferences
 
@@ -179,6 +186,10 @@ export function useWorkouts<T>(selector: (state: WorkoutsState) => T): T {
   return useStoreSelector(workoutsStore, selector);
 }
 
+export function useChat<T>(selector: (state: ChatState) => T): T {
+  return useStoreSelector(chatStore, selector);
+}
+
 export function usePreferences<T>(selector: (state: Preferences) => T): T {
   return useStoreSelector(preferencesStore, selector);
 }
@@ -259,13 +270,15 @@ async function readStore<T>(kv: KeyValueStore, key: string): Promise<StoreRead<T
  * every failure goes through `reportPersistenceFailure`.
  */
 export async function hydrateAndPersistStores(kv: KeyValueStore = asyncKeyValueStore): Promise<() => void> {
-  const [diary, preferences, profile, body, workouts] = await Promise.all([
+  const [diary, preferences, profile, body, workouts, chat] = await Promise.all([
     readStore<PersistedDiary>(kv, storageKeys.diary),
     readStore<Partial<Preferences>>(kv, storageKeys.preferences),
     readStore<UserProfile>(kv, storageKeys.profile),
     readStore<PersistedBody>(kv, storageKeys.body),
     readStore<PersistedWorkouts>(kv, storageKeys.workouts),
+    readStore<ChatMessage[]>(kv, storageKeys.chat),
   ]);
+  if (Array.isArray(chat.value)) chatStore.dispatch({ type: 'hydrate', messages: chat.value });
 
   if (diary.value) diaryStore.dispatch({ type: 'hydrate', state: diary.value });
   preferencesStore.dispatch({ type: 'hydrate', preferences: mergePreferences(preferences.value) });
@@ -296,6 +309,7 @@ export async function hydrateAndPersistStores(kv: KeyValueStore = asyncKeyValueS
       persistOnChange(workoutsStore, kv, storageKeys.workouts, (state): PersistedWorkouts => ({ sessions: state.sessions, drafts: state.drafts, preferences: state.preferences })),
     );
   }
+  if (chat.readable) unsubscribes.push(persistOnChange(chatStore, kv, storageKeys.chat, (state) => state.messages));
 
   return () => unsubscribes.forEach((fn) => fn());
 }

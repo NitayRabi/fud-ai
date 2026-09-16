@@ -7,6 +7,8 @@ export * from './ai/transport';
 export * from './ai/foodAnalysis';
 export * from './ai/runtime';
 export * from './body/bodyState';
+export * from './coach/coach';
+export * from './coach/weightForecast';
 export * from './dates';
 export * from './progress/progress';
 export * from './diary/diaryState';
