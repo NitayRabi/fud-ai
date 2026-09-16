@@ -30,11 +30,13 @@ the SwiftUI source they mirror.
 | Home | `src/screens/home/`, `src/components/home/` | Week strip, calorie dome, nutrient bars, unified diary, "+" menu with water + fasting + manual entry |
 | Unified diary store | `src/domain/diary/diaryState.ts`, `src/state/` | One reducer/state for food + water + fasting (#369) |
 | Settings | `src/screens/settings/` | Category list, AI Access, Tracking & Reminders, App Settings |
+| Hosted paywall | `src/screens/paywall/HostedPaywallSheet.tsx` | Plan list from RevenueCat offerings, purchase, Restore Purchases. Shows "plans unavailable" until a store adapter is installed with `setPurchasesAdapter` |
 | Shared domain | `src/domain/` | AI providers/models, hosted constants, food analysis shapes, prefs keys, profile goal math, RevenueCat seam |
 | iOS glass bridge | `modules/glass-chrome/` | Expo local module: `UIGlassEffect` (iOS 26+) with material fallback |
 
 Not yet ported (placeholders or alerts): AI food logging transports, Progress, Coach, Workouts,
-paywall, the remaining onboarding steps, Watch / widgets / Health.
+the `react-native-purchases` adapter behind the paywall, the remaining onboarding steps,
+Watch / widgets / Health.
 
 ## Domain parity
 
