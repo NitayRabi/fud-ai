@@ -11,6 +11,8 @@ import { useContext, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ActionListSheet } from '../../components/ActionListSheet';
+import { BottomSheet } from '../../components/BottomSheet';
 import { Icon } from '../../components/Icon';
 import { AppText, Card, Divider, PrimaryButton, Row, Screen, SecondaryButton } from '../../components/primitives';
 import { SegmentedControl } from '../../components/SegmentedControl';
@@ -114,6 +116,8 @@ function WorkoutLog({ dayKey: today, onAddExercise, bottomInset }: { dayKey: str
   const performed = draft?.exercises.flatMap((e) => e.sets).filter(isSetPerformed).length ?? 0;
   const draftDate = dateFromDayKey(today);
   const isToday = isSameDay(draftDate, new Date());
+  const [savedSummary, setSavedSummary] = useState<string | null>(null);
+  const [inspecting, setInspecting] = useState<WorkoutSession | null>(null);
 
   const toggleWeightUnit = () => {
     const next = prefs.weightUnit === 'kg' ? 'lbs' : 'kg';
@@ -126,7 +130,10 @@ function WorkoutLog({ dayKey: today, onAddExercise, bottomInset }: { dayKey: str
     if (!draft || performed === 0) return;
     const session = finishDraft(draft, newId, new Date(), preferences, latestWeight(body)?.weightKg ?? profile.weightKg);
     workoutsStore.dispatch({ type: 'session/finish', dayKey: today, session });
-    Alert.alert('Workout saved', session.caloriesBurned ? `${performedSetCount(session)} sets · ${repCount(session)} reps · ~${session.caloriesBurned} kcal estimated` : `${performedSetCount(session)} sets · ${repCount(session)} reps`);
+    const summary = session.caloriesBurned
+      ? `${performedSetCount(session)} sets · ${repCount(session)} reps · ~${session.caloriesBurned} kcal estimated`
+      : `${performedSetCount(session)} sets · ${repCount(session)} reps`;
+    setSavedSummary(summary);
   };
 
   const discard = () =>
@@ -142,82 +149,127 @@ function WorkoutLog({ dayKey: today, onAddExercise, bottomInset }: { dayKey: str
   };
 
   return (
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 18, paddingBottom: bottomInset + 32 }} scrollIndicatorInsets={{ bottom: bottomInset }}>
-      <Row style={{ justifyContent: 'space-between' }}>
-        <View>
-          <AppText variant="title2">{isToday ? 'Today' : 'Unfinished workout'}</AppText>
-          <AppText variant="subheadline" tone="secondary">
-            {draftDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
-          </AppText>
-        </View>
-        <Row style={{ gap: 8 }}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Weight unit" onPress={toggleWeightUnit} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: theme.radii.pill, backgroundColor: theme.accentAlpha(0.12) }}>
-            <AppText variant="footnoteSemibold" tone="accent">
-              {prefs.weightUnit}
+    <>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 18, paddingBottom: bottomInset + 32 }} scrollIndicatorInsets={{ bottom: bottomInset }}>
+        <Row style={{ justifyContent: 'space-between' }}>
+          <View>
+            <AppText variant="title2">{isToday ? 'Today' : 'Unfinished workout'}</AppText>
+            <AppText variant="subheadline" tone="secondary">
+              {draftDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
             </AppText>
-          </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="RPE scale" onPress={cycleScale} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: theme.radii.pill, backgroundColor: theme.accentAlpha(0.12) }}>
-            <AppText variant="footnoteSemibold" tone="accent">
-              {rpeScaleTitle(workouts.preferences.rpeScale)}
-            </AppText>
-          </Pressable>
-        </Row>
-      </Row>
-
-      {!draft || draft.exercises.length === 0 ? (
-        <Card style={{ alignItems: 'center', gap: 12, paddingVertical: 28 }}>
-          <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: theme.accentAlpha(0.12), alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="figure.strengthtraining.traditional" size={32} color={theme.colors.accent} />
           </View>
-          <AppText variant="headline">Start today's workout</AppText>
-          <AppText variant="subheadline" tone="secondary" align="center">
-            Add exercises from the library, log weight, reps and RPE per set, then finish to save it to your diary.
-          </AppText>
-          <PrimaryButton title="Add Exercise" style={{ alignSelf: 'stretch' }} onPress={onAddExercise} />
-        </Card>
-      ) : (
-        <>
-          {draft.exercises.map((exercise) => (
-            <DraftExerciseCard key={exercise.id} dayKey={today} exercise={exercise} weightUnit={prefs.weightUnit} rpeScale={workouts.preferences.rpeScale} />
-          ))}
-          <SecondaryButton title="Add Exercise" onPress={onAddExercise} />
-          <PrimaryButton title={performed > 0 ? `Finish Workout · ${performed} ${performed === 1 ? 'set' : 'sets'}` : 'Finish Workout'} disabled={performed === 0} onPress={finish} />
-          <Pressable accessibilityRole="button" onPress={discard} style={{ alignSelf: 'center' }}>
-            <AppText variant="footnoteSemibold" tone="destructive">
-              Discard
-            </AppText>
-          </Pressable>
-        </>
-      )}
+          <Row style={{ gap: 8 }}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Weight unit" onPress={toggleWeightUnit} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: theme.radii.pill, backgroundColor: theme.accentAlpha(0.12) }}>
+              <AppText variant="footnoteSemibold" tone="accent">
+                {prefs.weightUnit}
+              </AppText>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="RPE scale" onPress={cycleScale} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: theme.radii.pill, backgroundColor: theme.accentAlpha(0.12) }}>
+              <AppText variant="footnoteSemibold" tone="accent">
+                {rpeScaleTitle(workouts.preferences.rpeScale)}
+              </AppText>
+            </Pressable>
+          </Row>
+        </Row>
 
-      {sessions.length > 0 ? (
-        <View style={{ gap: 6 }}>
-          <AppText variant="footnote" tone="secondary" style={{ textTransform: 'uppercase', letterSpacing: 0.3, paddingHorizontal: 4 }}>
-            History
-          </AppText>
-          <Card padded={false} style={{ overflow: 'hidden' }}>
-            {sessions.slice(0, 20).map((session, index) => (
-              <View key={session.id}>
-                {index > 0 ? <Divider style={{ marginLeft: theme.spacing.lg }} /> : null}
-                <SessionRow session={session} />
-              </View>
-            ))}
+        {!draft || draft.exercises.length === 0 ? (
+          <Card style={{ alignItems: 'center', gap: 12, paddingVertical: 28 }}>
+            <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: theme.accentAlpha(0.12), alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="figure.strengthtraining.traditional" size={32} color={theme.colors.accent} />
+            </View>
+            <AppText variant="headline">Start today's workout</AppText>
+            <AppText variant="subheadline" tone="secondary" align="center">
+              Add exercises from the library, log weight, reps and RPE per set, then finish to save it to your diary.
+            </AppText>
+            <PrimaryButton title="Add Exercise" style={{ alignSelf: 'stretch' }} onPress={onAddExercise} />
           </Card>
-        </View>
-      ) : null}
-    </ScrollView>
+        ) : (
+          <>
+            {draft.exercises.map((exercise) => (
+              <DraftExerciseCard key={exercise.id} dayKey={today} exercise={exercise} weightUnit={prefs.weightUnit} rpeScale={workouts.preferences.rpeScale} />
+            ))}
+            <SecondaryButton title="Add Exercise" onPress={onAddExercise} />
+            <PrimaryButton title={performed > 0 ? `Finish Workout · ${performed} ${performed === 1 ? 'set' : 'sets'}` : 'Finish Workout'} disabled={performed === 0} onPress={finish} />
+            <Pressable accessibilityRole="button" onPress={discard} style={{ alignSelf: 'center' }}>
+              <AppText variant="footnoteSemibold" tone="destructive">
+                Discard
+              </AppText>
+            </Pressable>
+          </>
+        )}
+
+        {sessions.length > 0 ? (
+          <View style={{ gap: 6 }}>
+            <AppText variant="footnote" tone="secondary" style={{ textTransform: 'uppercase', letterSpacing: 0.3, paddingHorizontal: 4 }}>
+              History
+            </AppText>
+            <Card padded={false} style={{ overflow: 'hidden' }}>
+              {sessions.slice(0, 20).map((session, index) => (
+                <View key={session.id}>
+                  {index > 0 ? <Divider style={{ marginLeft: theme.spacing.lg }} /> : null}
+                  <SessionRow session={session} onInspect={() => setInspecting(session)} />
+                </View>
+              ))}
+            </Card>
+          </View>
+        ) : null}
+      </ScrollView>
+
+      <BottomSheet visible={savedSummary !== null} title="Workout saved" onDismiss={() => setSavedSummary(null)} surface="card">
+        <AppText variant="subheadline" tone="secondary" align="center">
+          {savedSummary}
+        </AppText>
+        <PrimaryButton title="Done" onPress={() => setSavedSummary(null)} />
+      </BottomSheet>
+
+      <ActionListSheet
+        visible={inspecting !== null}
+        title={
+          inspecting
+            ? new Date(inspecting.diaryDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+            : 'Workout'
+        }
+        message={inspecting ? inspecting.exercises.map((e) => `${e.name} · ${e.sets.length} sets`).join('\n') || undefined : undefined}
+        actions={
+          inspecting
+            ? [
+                {
+                  id: 'delete',
+                  title: 'Delete',
+                  icon: 'trash',
+                  destructive: true,
+                  onPress: () =>
+                    Alert.alert('Delete workout?', undefined, [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Delete',
+                        style: 'destructive',
+                        onPress: () => {
+                          workoutsStore.dispatch({ type: 'session/delete', id: inspecting.id });
+                          setInspecting(null);
+                        },
+                      },
+                    ]),
+                },
+              ]
+            : []
+        }
+        onDismiss={() => setInspecting(null)}
+      />
+    </>
   );
 }
 
-function SessionRow({ session }: { session: WorkoutSession }) {
+function SessionRow({ session, onInspect }: { session: WorkoutSession; onInspect: () => void }) {
   const theme = useTheme();
+  // Pressable already suppresses onPress after a recognized long press — no extra flag.
   const remove = () =>
     Alert.alert('Delete workout?', undefined, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => workoutsStore.dispatch({ type: 'session/delete', id: session.id }) },
     ]);
   return (
-    <Pressable accessibilityRole="button" onLongPress={remove} onPress={() => Alert.alert(session.exercises.map((e) => `${e.name} · ${e.sets.length} sets`).join('\n') || 'Workout', undefined, [{ text: 'Delete', style: 'destructive', onPress: remove }, { text: 'Close', style: 'cancel' }])}>
+    <Pressable accessibilityRole="button" delayLongPress={280} onLongPress={remove} onPress={onInspect}>
       <Row style={{ paddingHorizontal: theme.spacing.lg, paddingVertical: 12, gap: 12 }}>
         <View style={{ flex: 1, gap: 2 }}>
           <AppText variant="body" weight="500">

@@ -3,7 +3,7 @@ import { Pressable, TextInput, View } from 'react-native';
 
 import { fastingSettings, formatFastGoal } from '../../domain/fasting/fasting';
 import { mealTypeDisplayName, mealTypes, type MealType, type NewFoodEntryInput } from '../../domain/food/food';
-import { formatWater, millilitersFromDisplayedValue, waterSettings, waterUnitSymbol, type WaterUnit } from '../../domain/water/water';
+import { formatWater, millilitersFromDisplayedValue, waterDisplayValue, waterSettings, waterUnitSymbol, type WaterUnit } from '../../domain/water/water';
 import { useTheme } from '../../theme';
 import { BottomSheet } from '../../components/BottomSheet';
 import { Icon, type SFSymbolName } from '../../components/Icon';
@@ -317,6 +317,125 @@ export function ManualEntrySheet({ visible, logDate, onDismiss, onSave }: Manual
           reset();
         }}
       />
+    </BottomSheet>
+  );
+}
+
+// MARK: - Nutrition detail (Home "View More")
+
+interface NutritionDetailSheetProps {
+  visible: boolean;
+  date: Date;
+  calories: number;
+  calorieGoal: number;
+  protein: number;
+  proteinGoal: number;
+  carbs: number;
+  carbsGoal: number;
+  fat: number;
+  fatGoal: number;
+  waterEnabled: boolean;
+  waterMilliliters: number;
+  waterGoalMilliliters: number;
+  waterUnit: WaterUnit;
+  /** Extra nutrient rows already formatted for display. */
+  detailRows: readonly { id: string; label: string; value: string; unit: string; goal?: string }[];
+  onDismiss: () => void;
+}
+
+function NutritionRow({ icon, label, value, unit, goal }: { icon: SFSymbolName; label: string; value: string; unit: string; goal?: string }) {
+  const theme = useTheme();
+  return (
+    <Row style={{ paddingHorizontal: theme.spacing.lg, paddingVertical: 12, gap: 12 }}>
+      <Icon name={icon} size={18} color={theme.colors.accent} />
+      <AppText variant="body" style={{ flex: 1 }}>
+        {label}
+      </AppText>
+      <View style={{ alignItems: 'flex-end' }}>
+        <AppText variant="bodySemibold">
+          {value}
+          <AppText variant="caption" tone="secondary">
+            {' '}
+            {unit}
+          </AppText>
+        </AppText>
+        {goal ? (
+          <AppText variant="caption2" tone="secondary">
+            of {goal}
+          </AppText>
+        ) : null}
+      </View>
+    </Row>
+  );
+}
+
+/** Reduced `NutritionDetailView` — macros + optional nutrients for the selected day. */
+export function NutritionDetailSheet({
+  visible,
+  date,
+  calories,
+  calorieGoal,
+  protein,
+  proteinGoal,
+  carbs,
+  carbsGoal,
+  fat,
+  fatGoal,
+  waterEnabled,
+  waterMilliliters,
+  waterGoalMilliliters,
+  waterUnit,
+  detailRows,
+  onDismiss,
+}: NutritionDetailSheetProps) {
+  const theme = useTheme();
+  const dayLabel = date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+  const waterUnitLabel = waterUnitSymbol(waterUnit);
+  return (
+    <BottomSheet visible={visible} title="Nutrition" onDismiss={onDismiss} detent="large" surface="background">
+      <AppText variant="subheadline" tone="secondary">
+        {dayLabel}
+      </AppText>
+      {waterEnabled ? (
+        <Card padded={false} style={{ overflow: 'hidden' }}>
+          <NutritionRow
+            icon="drop.fill"
+            label="Water"
+            value={waterDisplayValue(waterUnit, waterMilliliters)}
+            unit={waterUnitLabel}
+            goal={`${waterDisplayValue(waterUnit, waterGoalMilliliters)} ${waterUnitLabel}`}
+          />
+        </Card>
+      ) : null}
+      <View style={{ gap: 6 }}>
+        <AppText variant="footnote" tone="secondary" style={{ textTransform: 'uppercase', letterSpacing: 0.3, paddingHorizontal: 4 }}>
+          Macros
+        </AppText>
+        <Card padded={false} style={{ overflow: 'hidden' }}>
+          <NutritionRow icon="flame.fill" label="Calories" value={calories.toLocaleString()} unit="kcal" goal={`${calorieGoal.toLocaleString()} kcal`} />
+          <Divider style={{ marginLeft: theme.spacing.lg + 30 }} />
+          <NutritionRow icon="p.circle.fill" label="Protein" value={String(Math.round(protein))} unit="g" goal={`${proteinGoal} g`} />
+          <Divider style={{ marginLeft: theme.spacing.lg + 30 }} />
+          <NutritionRow icon="c.circle.fill" label="Carbs" value={String(Math.round(carbs))} unit="g" goal={`${carbsGoal} g`} />
+          <Divider style={{ marginLeft: theme.spacing.lg + 30 }} />
+          <NutritionRow icon="f.circle.fill" label="Fat" value={String(Math.round(fat))} unit="g" goal={`${fatGoal} g`} />
+        </Card>
+      </View>
+      {detailRows.length > 0 ? (
+        <View style={{ gap: 6 }}>
+          <AppText variant="footnote" tone="secondary" style={{ textTransform: 'uppercase', letterSpacing: 0.3, paddingHorizontal: 4 }}>
+            Detailed Nutrition
+          </AppText>
+          <Card padded={false} style={{ overflow: 'hidden' }}>
+            {detailRows.map((row, index) => (
+              <View key={row.id}>
+                {index > 0 ? <Divider style={{ marginLeft: theme.spacing.lg + 30 }} /> : null}
+                <NutritionRow icon="list.bullet.circle" label={row.label} value={row.value} unit={row.unit} goal={row.goal} />
+              </View>
+            ))}
+          </Card>
+        </View>
+      ) : null}
     </BottomSheet>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Platform, Pressable, ScrollView, View } from 'react-native';
 
+import { ComingSoonSheet } from '../../components/ComingSoonSheet';
 import { AppText, Card, Row, Screen } from '../../components/primitives';
 import { SettingsRow, SettingsSection } from '../../components/SettingsRow';
 import { aiModeDisplayName, dailyLimit, hostedPlanDisplayName, type AIMode } from '../../domain/ai/hosted';
@@ -24,6 +25,7 @@ export function AIAccessScreen() {
   const [hasKey, setHasKey] = useState<boolean | undefined>(undefined);
   const [paywallVisible, setPaywallVisible] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [providersComingSoon, setProvidersComingSoon] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,7 +109,7 @@ export function AIAccessScreen() {
             icon="sparkles"
             title="AI Providers & Fallbacks"
             subtitle="Change provider, model, fallbacks"
-            onPress={() => Alert.alert('AI Providers & Fallbacks', 'This screen is being ported to the shared app.')}
+            onPress={() => setProvidersComingSoon(true)}
           />
         </SettingsSection>
 
@@ -133,6 +135,13 @@ export function AIAccessScreen() {
       </ScrollView>
 
       <HostedPaywallSheet visible={paywallVisible} onDismiss={() => setPaywallVisible(false)} onEntitled={() => setPreferences({ aiAccessMode: 'hosted' })} />
+      <ComingSoonSheet
+        visible={providersComingSoon}
+        title="AI Providers & Fallbacks"
+        icon="sparkles"
+        message="Provider, model and fallback editing is being ported to the shared app. Configure them in the native Fud AI app for now."
+        onDismiss={() => setProvidersComingSoon(false)}
+      />
     </Screen>
   );
 }
