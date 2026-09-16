@@ -274,7 +274,8 @@ export function FoodResultSheet({ visible, analysis, imageUri, onDismiss, onSave
           onSave({
             analysis: { ...scaled, name: name.trim() },
             ...(meal ? { mealType: meal } : {}),
-            ...(note.trim() ? { customNote: note.trim() } : {}),
+            // Always explicit so a note the user cleared overrides one the analysis carried.
+            customNote: note.trim(),
           })
         }
       />

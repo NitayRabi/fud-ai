@@ -29,6 +29,7 @@ import { aiErrorMessage } from '../../domain/ai/errors';
 import { foodEntryInputFromAnalysis, type FoodAnalysis, type FoodAnalysisKind } from '../../domain/food/analysis';
 import { favoriteEntries, recentEntries } from '../../domain/diary/diaryState';
 import { analyzeFood } from '../../services/aiClient';
+import { deleteFoodImage, storeFoodImage } from '../../services/foodImageStore';
 import { ImagePermissionError, pickImage, type ImageSource } from '../../services/imagePicker';
 import { diaryStore, newId, setPreferences, useDiary, usePreferences, useProfile } from '../../state/appStores';
 import { useTheme } from '../../theme';
@@ -46,6 +47,8 @@ interface ReviewState {
   kind: FoodAnalysisKind;
   analysis: FoodAnalysis;
   imageUri?: string;
+  /** The analyzed JPEG, kept until Save so the diary entry can keep its photo on disk. */
+  imageBase64?: string;
 }
 
 /**
@@ -167,7 +170,7 @@ export function HomeScreen() {
           controller.signal,
         );
         if (controller.signal.aborted) return;
-        setReview({ kind, analysis, ...(input.imageUri ? { imageUri: input.imageUri } : {}) });
+        setReview({ kind, analysis, ...(input.imageUri ? { imageUri: input.imageUri } : {}), ...(input.imageBase64 ? { imageBase64: input.imageBase64 } : {}) });
         setSheet('review');
       } catch (error) {
         if (controller.signal.aborted) return;
@@ -209,13 +212,23 @@ export function HomeScreen() {
 
   const saveReview = (result: FoodResultSave) => {
     if (!review) return;
+    const id = newId();
+    // Photo and label scans keep their picture like the native diary: the JPEG goes to disk
+    // under the entry id and only the filename is persisted with the entry.
+    const imageFilename = review.imageBase64 ? storeFoodImage(review.imageBase64, id) : undefined;
     const input = foodEntryInputFromAnalysis(result.analysis, review.kind, logDate().toISOString(), {
       ...(result.mealType ? { mealType: result.mealType } : {}),
-      ...(result.customNote ? { customNote: result.customNote } : {}),
+      ...(result.customNote !== undefined ? { customNote: result.customNote } : {}),
+      ...(imageFilename ? { imageFilename } : {}),
     });
-    diaryStore.dispatch({ type: 'food/add', entry: makeFoodEntry(input, newId()) });
+    diaryStore.dispatch({ type: 'food/add', entry: makeFoodEntry(input, id) });
     setReview(null);
     setSheet(null);
+  };
+
+  const deleteFoodEntry = (entry: FoodEntry) => {
+    diaryStore.dispatch({ type: 'food/delete', id: entry.id });
+    deleteFoodImage(entry.imageFilename);
   };
 
   const relogEntry = (entry: FoodEntry) => {
@@ -355,7 +368,7 @@ export function HomeScreen() {
                                   text: isFavorite(diary, item.entry) ? 'Unfavorite' : 'Favorite',
                                   onPress: () => diaryStore.dispatch({ type: 'food/toggleFavorite', entry: item.entry }),
                                 },
-                                { text: 'Delete', style: 'destructive', onPress: () => diaryStore.dispatch({ type: 'food/delete', id: item.entry.id }) },
+                                { text: 'Delete', style: 'destructive', onPress: () => deleteFoodEntry(item.entry) },
                                 { text: 'Cancel', style: 'cancel' },
                               ])
                             }

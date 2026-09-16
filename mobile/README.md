@@ -28,7 +28,7 @@ the SwiftUI source they mirror.
 |------|-------|--------|
 | App shell + theme | `App.tsx`, `src/theme/`, `src/navigation/` | 5 tabs (Home, Progress, Coach, Settings, Workouts), accent + appearance prefs |
 | Onboarding | `src/screens/onboarding/` | All 14 steps of `OnboardingView.swift`: welcome, gender, birthday, height & weight, body fat, activity, goal, desired weight, goal speed, notifications, Health, AI setup, building plan, Plan Ready. AI step keeps the #373 fix: placeholder is "Paste Gemini API key", helper text explains a disabled Continue |
-| Home | `src/screens/home/`, `src/components/home/` | Week strip, calorie dome, nutrient bars, unified diary, "+" menu with water, fasting, manual entry and AI logging |
+| Home | `src/screens/home/`, `src/components/home/` | Week strip, calorie dome, nutrient bars, unified diary, "+" menu with water, fasting, manual entry and AI logging. Photo and label scans keep their picture on disk (`src/services/foodImageStore.ts`, the `FoodImageStore` layout) and the diary row shows it |
 | AI food logging | `src/screens/home/FoodAISheets.tsx`, `src/services/aiClient.ts`, `src/domain/ai/` | Scan Food / Scan Label (camera or library), Describe Meal, Voice (keyboard dictation), Saved Meals. Analyzing overlay with Cancel; every request has a hard timeout; results reviewed (name, kcal, macros, serving grams, ingredients, meal, note) before entering the diary with the native `FoodSource` |
 | AI transports | `src/domain/ai/transport.ts`, `runtime.ts`, `errors.ts` | Gemini, OpenAI-compatible, Anthropic and the hosted proxy. Compact retry on truncation, `AIErrorKind` classification, vision/text selection, single fallback retry, hosted entitlement gate |
 | Progress | `src/screens/progress/`, `src/domain/progress/`, `src/domain/body/` | My Progress / Weekly Challenge pills; 1W–All ranges; Weight / Body Fat / Workouts metric; SVG trend chart (area, dots, goal rule, drag-to-inspect); calorie bars; macro + nutrient averages; streaks & stats; Log Weight / Log Body Fat and history sheets. Weekly Challenge scores on device |
@@ -54,7 +54,7 @@ Data lists each one with its status.
   `unsupportedDevice` / `localUnavailable` and points to a cloud provider.
 - **Barcode lookup (Open Food Facts), on-device Whisper transcription, weekly-challenge
   leaderboard accounts, diary export/import, cloud backup, Adaptive Goals, custom reminder
-  times, meal photos on disk** — the UI names each of these where it would appear.
+  times** — the UI names each of these where it would appear.
 
 ## Domain parity
 

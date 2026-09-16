@@ -9,6 +9,7 @@ import { Alert, Platform, ScrollView, View } from 'react-native';
 import { AppText, Card } from '../../components/primitives';
 import { SettingsRow, SettingsSection, SettingsToggleRow } from '../../components/SettingsRow';
 import { companionAvailabilityLabel, companionStatuses, healthServiceName } from '../../domain/integrations/companions';
+import { deleteAllFoodImages } from '../../services/foodImageStore';
 import { bodyStore, chatStore, diaryStore, setPreferences, usePreferences, workoutsStore } from '../../state/appStores';
 import { useTheme } from '../../theme';
 
@@ -31,6 +32,7 @@ export function HealthDataScreen() {
           bodyStore.dispatch({ type: 'clearAll' });
           workoutsStore.dispatch({ type: 'clearAll' });
           chatStore.dispatch({ type: 'reset' });
+          deleteAllFoodImages();
         },
       },
     ]);
