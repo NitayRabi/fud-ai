@@ -5,10 +5,11 @@
  * (`ios/calorietracker/Resources/FreeExerciseDB/dist/exercises.json`) and the workout-vector
  * manifest (`shared/workout-vectors/exercise-visual-manifest.json`).
  *
- * The catalog is a compact tuple array (metadata only, ~200 KB) so the library list stays
- * light; instructions live in a second file that the detail view requires lazily. Frames
- * themselves are never bundled — like the native store builds they load from the CDN
- * (`https://assets.fud-ai.app/workout-vectors/v2/<frame>.png`).
+ * The catalog is a compact tuple array (metadata plus the per-frame content digests, ~250 KB)
+ * so the library list stays light; instructions live in a second file that the detail view
+ * requires lazily. Frames themselves are never bundled — like the native store builds they
+ * load from the CDN (`https://assets.fud-ai.app/workout-vectors/v2/<frame>.png?v=<digest>`),
+ * the digest doubling as the cache key so a replaced frame is never served stale.
  *
  *   node scripts/build-exercise-catalog.mjs
  */
@@ -25,6 +26,13 @@ const outDir = resolve(here, '..', 'src/domain/workouts');
 const records = JSON.parse(readFileSync(source, 'utf8'));
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')).exercises;
 const frames = new Map(manifest.map((m) => [m.exerciseId, m]));
+
+/** Comma-joined digests, one per frame index; '' where the manifest has none (`validDigests` on iOS). */
+function digestList(visual, key) {
+  const digests = visual?.[key];
+  if (!Array.isArray(digests) || digests.length !== visual.frameCount) return '';
+  return digests.map((d) => String(d ?? '')).join(',');
+}
 
 const catalog = [];
 const instructions = {};
@@ -45,6 +53,8 @@ for (const record of records) {
     record.secondaryMuscles ?? [],
     visual ? visual.frameCount : 0,
     visual ? visual.representativeFrameIndex : 0,
+    digestList(visual, 'maleFrameDigests'),
+    digestList(visual, 'femaleFrameDigests'),
   ]);
   const steps = (record.instructions ?? []).map((s) => String(s).trim()).filter(Boolean);
   if (steps.length > 0) instructions[id] = steps;

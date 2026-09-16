@@ -15,12 +15,14 @@ import { Icon } from '../../components/Icon';
 import { AppText, Card, Divider, PrimaryButton, Row, Screen, SecondaryButton } from '../../components/primitives';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { latestWeight } from '../../domain/body/bodyState';
-import { dayKey } from '../../domain/dates';
+import { dateFromDayKey, dayKey, isSameDay } from '../../domain/dates';
 import type { ExerciseLibraryItem } from '../../domain/workouts/exerciseLibrary';
 import {
+  activeDraftKey,
   completedSessions,
   durationMinutes,
   finishDraft,
+  isSetPerformed,
   performedSetCount,
   repCount,
   rpeScaleTitle,
@@ -43,7 +45,10 @@ export function WorkoutsScreen() {
   const [mode, setMode] = useState<Mode>('log');
   const [picking, setPicking] = useState(false);
   const profile = useProfile((p) => p);
-  const today = dayKey(new Date());
+  const drafts = useWorkouts((s) => s.drafts);
+  // An unfinished workout stays reachable after midnight: the log opens the most recent draft
+  // (usually today's) and only a brand-new workout is keyed to the current day.
+  const today = activeDraftKey(drafts) ?? dayKey(new Date());
 
   const pickExercise = (item: ExerciseLibraryItem) => {
     const exercise: DraftExercise = {
@@ -105,7 +110,17 @@ function WorkoutLog({ dayKey: today, onAddExercise, bottomInset }: { dayKey: str
   const draft = workouts.drafts[today];
   const sessions = useMemo(() => completedSessions(workouts), [workouts]);
   const preferences = { ...workouts.preferences, weightUnit: prefs.weightUnit };
-  const performed = draft?.exercises.flatMap((e) => e.sets).filter((s) => s.reps.trim().length > 0).length ?? 0;
+  // Same rule as Finish and the saved session: a set with "0" reps is not performed.
+  const performed = draft?.exercises.flatMap((e) => e.sets).filter(isSetPerformed).length ?? 0;
+  const draftDate = dateFromDayKey(today);
+  const isToday = isSameDay(draftDate, new Date());
+
+  const toggleWeightUnit = () => {
+    const next = prefs.weightUnit === 'kg' ? 'lbs' : 'kg';
+    // Convert what is already typed so 185 lbs reads 83.9 kg instead of becoming 185 kg.
+    workoutsStore.dispatch({ type: 'draft/convertWeightUnit', from: prefs.weightUnit, to: next });
+    setPreferences({ weightUnit: next });
+  };
 
   const finish = () => {
     if (!draft || performed === 0) return;
@@ -115,7 +130,7 @@ function WorkoutLog({ dayKey: today, onAddExercise, bottomInset }: { dayKey: str
   };
 
   const discard = () =>
-    Alert.alert('Discard workout?', 'This removes every exercise you added today.', [
+    Alert.alert('Discard workout?', isToday ? 'This removes every exercise you added today.' : 'This removes every exercise in this unfinished workout.', [
       { text: 'Keep', style: 'cancel' },
       { text: 'Discard', style: 'destructive', onPress: () => workoutsStore.dispatch({ type: 'draft/discard', dayKey: today }) },
     ]);
@@ -130,13 +145,13 @@ function WorkoutLog({ dayKey: today, onAddExercise, bottomInset }: { dayKey: str
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 18, paddingBottom: bottomInset + 32 }} scrollIndicatorInsets={{ bottom: bottomInset }}>
       <Row style={{ justifyContent: 'space-between' }}>
         <View>
-          <AppText variant="title2">Today</AppText>
+          <AppText variant="title2">{isToday ? 'Today' : 'Unfinished workout'}</AppText>
           <AppText variant="subheadline" tone="secondary">
-            {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+            {draftDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
           </AppText>
         </View>
         <Row style={{ gap: 8 }}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Weight unit" onPress={() => setPreferences({ weightUnit: prefs.weightUnit === 'kg' ? 'lbs' : 'kg' })} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: theme.radii.pill, backgroundColor: theme.accentAlpha(0.12) }}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Weight unit" onPress={toggleWeightUnit} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: theme.radii.pill, backgroundColor: theme.accentAlpha(0.12) }}>
             <AppText variant="footnoteSemibold" tone="accent">
               {prefs.weightUnit}
             </AppText>
@@ -269,9 +284,9 @@ function DraftExerciseCard({ dayKey: today, exercise, weightUnit, rpeScale }: { 
           <AppText variant="subheadlineSemibold" style={{ width: 32 }}>
             {index + 1}
           </AppText>
-          <SetField value={set.weight} placeholder="—" onChange={(weight) => update({ ...set, weight })} />
+          <SetField value={set.weight} placeholder="—" onChange={(weight) => update({ ...set, weight, weightUnit })} />
           <SetField value={set.reps} placeholder="0" onChange={(reps) => update({ ...set, reps: reps.replace(/[^0-9]/g, '') })} />
-          <SetField value={set.rpe} placeholder="—" onChange={(rpe) => update({ ...set, rpe })} />
+          <SetField value={set.rpe} placeholder="—" onChange={(rpe) => update({ ...set, rpe, rpeScale })} />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Remove set"
@@ -286,7 +301,19 @@ function DraftExerciseCard({ dayKey: today, exercise, weightUnit, rpeScale }: { 
         accessibilityRole="button"
         onPress={() => {
           const last = exercise.sets[exercise.sets.length - 1];
-          workoutsStore.dispatch({ type: 'draft/addSet', dayKey: today, exerciseId: exercise.id, set: { id: newId(), weight: last?.weight ?? '', reps: '', rpe: last?.rpe ?? '' } });
+          workoutsStore.dispatch({
+            type: 'draft/addSet',
+            dayKey: today,
+            exerciseId: exercise.id,
+            set: {
+              id: newId(),
+              weight: last?.weight ?? '',
+              reps: '',
+              rpe: last?.rpe ?? '',
+              ...(last?.weight ? { weightUnit: last.weightUnit ?? weightUnit } : {}),
+              ...(last?.rpe ? { rpeScale: last.rpeScale ?? rpeScale } : {}),
+            },
+          });
         }}
         style={({ pressed }) => ({ alignSelf: 'flex-start', opacity: pressed ? 0.6 : 1 })}
       >

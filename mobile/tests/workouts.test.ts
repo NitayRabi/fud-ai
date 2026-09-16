@@ -10,15 +10,21 @@ import {
   hasActiveFilters,
   metadataSummary,
   metadataTitle,
+  normalizedFrameDigest,
   representativeFrameURL,
 } from '../src/domain/workouts/exerciseLibrary';
 import {
+  activeDraftKey,
+  convertDraftSetWeight,
   dailyBurn,
   estimateBurn,
   finishDraft,
   initialWorkoutsState,
   isReliableBurn,
+  isSetPerformed,
   liftHistory,
+  performedSetCount,
+  repCount,
   totalBurn,
   workoutsReducer,
   type CompletedExercise,
@@ -33,8 +39,15 @@ describe('exercise catalog', () => {
     const situp = catalog.find((i) => i.id === '3_4_Sit-Up');
     expect(situp).toMatchObject({ name: '3/4 Sit-Up', level: 'Beginner', equipment: 'Body Only', category: 'Strength', primaryMuscles: ['Abdominals'] });
     expect(metadataSummary(situp!)).toBe('Strength - Pull - Compound');
-    expect(representativeFrameURL(situp!, 'male')).toBe('https://assets.fud-ai.app/workout-vectors/v2/3_4_Sit-Up_male_v2_2.png');
+    // The manifest digest rides along as the cache key, exactly like `WorkoutFrameStore.remoteURL`.
+    expect(situp!.maleFrameDigests).toHaveLength(situp!.frameCount);
+    expect(representativeFrameURL(situp!, 'male')).toBe(`https://assets.fud-ai.app/workout-vectors/v2/3_4_Sit-Up_male_v2_2.png?v=${situp!.maleFrameDigests[2]}`);
+    expect(frameURL(situp!, 'female', 0)).toBe(`https://assets.fud-ai.app/workout-vectors/v2/3_4_Sit-Up_female_v2_0.png?v=${situp!.femaleFrameDigests[0]}`);
     expect(frameURL(situp!, 'female', 9)).toBeUndefined();
+    // Without a usable digest the URL is the bare frame, never `?v=`.
+    expect(frameURL({ id: 'X', frameCount: 1, maleFrameDigests: ['not hex'] }, 'male', 0)).toBe('https://assets.fud-ai.app/workout-vectors/v2/X_male_v2_0.png');
+    expect(normalizedFrameDigest('9FA2E5292159AFF0')).toBe('9fa2e5292159aff0');
+    expect(normalizedFrameDigest('abc')).toBeUndefined();
     expect(exerciseInstructions('3_4_Sit-Up').length).toBeGreaterThan(3);
     expect(exerciseInstructions('nope')).toEqual([]);
     expect(catalog.map((i) => i.name)).toEqual([...catalog.map((i) => i.name)].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })));
@@ -102,6 +115,50 @@ describe('workout sessions', () => {
     expect(isReliableBurn(session.caloriesBurned)).toBe(true);
     expect(session.caloriesBurned).toBeGreaterThan(20);
     expect(session.caloriesBurned).toBeLessThan(200);
+  });
+
+  it('treats "0" reps as not performed everywhere', () => {
+    expect(isSetPerformed({ reps: '0' })).toBe(false);
+    expect(isSetPerformed({ reps: ' ' })).toBe(false);
+    expect(isSetPerformed({ reps: '8' })).toBe(true);
+    const zeroed: WorkoutDraft = { ...draft, exercises: [{ ...draft.exercises[0]!, sets: [{ id: 'z', weight: '100', reps: '0', rpe: '7' }, { id: 'k', weight: '100', reps: '5', rpe: '7' }] }] };
+    const session = finishDraft(zeroed, id, now, { split: 'fullBody', rpeScale: 'strength', weightUnit: 'lbs' }, 80);
+    expect(session.exercises[0]?.sets.map((s) => s.id)).toEqual(['k']);
+    expect(performedSetCount(session)).toBe(1);
+    expect(repCount(session)).toBe(5);
+  });
+
+  it('saves each set in the unit and scale it was typed under, and converts drafts on a unit toggle', () => {
+    const typedInLbs: WorkoutDraft = {
+      ...draft,
+      exercises: [{ ...draft.exercises[0]!, sets: [{ id: 'a', weight: '185', reps: '8', rpe: '7', weightUnit: 'lbs', rpeScale: 'strength' }, { id: 'b', weight: '90', reps: '8', rpe: '15' }] }],
+    };
+    // Preferences flipped to kg / Borg after set "a" was typed: "a" keeps its tags, legacy "b" takes the preferences.
+    const session = finishDraft(typedInLbs, id, now, { split: 'fullBody', rpeScale: 'borg', weightUnit: 'kg' }, 80);
+    expect(session.exercises[0]?.sets[0]).toMatchObject({ weight: '185', weightUnit: 'lbs', rpeScale: 'strength' });
+    expect(session.exercises[0]?.sets[1]).toMatchObject({ weight: '90', weightUnit: 'kg', rpeScale: 'borg' });
+
+    expect(convertDraftSetWeight({ id: 'a', weight: '185', reps: '8', rpe: '', weightUnit: 'lbs' }, 'lbs', 'kg')).toMatchObject({ weight: '83.9', weightUnit: 'kg' });
+    expect(convertDraftSetWeight({ id: 'a', weight: '100', reps: '8', rpe: '' }, 'kg', 'lbs')).toMatchObject({ weight: '220.5', weightUnit: 'lbs' });
+    // Already in the target unit: only the tag is (re)applied; blanks are never invented.
+    expect(convertDraftSetWeight({ id: 'a', weight: '60', reps: '8', rpe: '', weightUnit: 'kg' }, 'lbs', 'kg')).toMatchObject({ weight: '60', weightUnit: 'kg' });
+    expect(convertDraftSetWeight({ id: 'a', weight: '', reps: '8', rpe: '' }, 'lbs', 'kg')).toEqual({ id: 'a', weight: '', reps: '8', rpe: '', weightUnit: 'kg' });
+
+    let state = workoutsReducer(initialWorkoutsState, { type: 'draft/addExercise', dayKey: day, exercise: typedInLbs.exercises[0]!, startedAt: draft.startedAt });
+    state = workoutsReducer(state, { type: 'draft/convertWeightUnit', from: 'lbs', to: 'kg' });
+    expect(state.drafts[day]?.exercises[0]?.sets.map((s) => [s.weight, s.weightUnit])).toEqual([
+      ['83.9', 'kg'],
+      ['40.8', 'kg'],
+    ]);
+    expect(workoutsReducer(state, { type: 'draft/convertWeightUnit', from: 'kg', to: 'kg' })).toBe(state);
+  });
+
+  it('resumes the most recently started unfinished draft even after the day changed', () => {
+    expect(activeDraftKey({})).toBeUndefined();
+    const yesterday = { ...draft, dayKey: '2026-09-15', startedAt: new Date(2026, 8, 15, 23, 40).toISOString() };
+    const empty: WorkoutDraft = { dayKey: '2026-09-16', startedAt: new Date(2026, 8, 16, 8).toISOString(), exercises: [] };
+    expect(activeDraftKey({ [yesterday.dayKey]: yesterday, [empty.dayKey]: empty })).toBe('2026-09-15');
+    expect(activeDraftKey({ [yesterday.dayKey]: yesterday, [draft.dayKey]: draft })).toBe(day);
   });
 
   it('estimates nothing without performed sets and scales with effort', () => {

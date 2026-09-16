@@ -21,11 +21,14 @@ export interface ExerciseLibraryItem {
   /** Number of CDN frames (0 when the exercise has no vector animation). */
   frameCount: number;
   representativeFrameIndex: number;
+  /** Per-frame content digests from the shared manifest ('' where unknown); the CDN cache key. */
+  maleFrameDigests: readonly string[];
+  femaleFrameDigests: readonly string[];
   /** Lower-cased haystack, precomputed so filtering does not rebuild it per keystroke. */
   searchableText: string;
 }
 
-type CatalogTuple = [string, string, string, string, string, string, string, string[], string[], number, number];
+type CatalogTuple = [string, string, string, string, string, string, string, string[], string[], number, number, string, string];
 
 export const UNSPECIFIED = 'Unspecified';
 
@@ -60,6 +63,8 @@ export function makeExerciseLibraryItem(input: {
   secondaryMuscles?: readonly string[];
   frameCount?: number;
   representativeFrameIndex?: number;
+  maleFrameDigests?: readonly string[];
+  femaleFrameDigests?: readonly string[];
 }): ExerciseLibraryItem {
   const item = {
     id: input.id,
@@ -73,6 +78,8 @@ export function makeExerciseLibraryItem(input: {
     secondaryMuscles: metadataTitles(input.secondaryMuscles ?? []),
     frameCount: input.frameCount ?? 0,
     representativeFrameIndex: input.representativeFrameIndex ?? 0,
+    maleFrameDigests: input.maleFrameDigests ?? [],
+    femaleFrameDigests: input.femaleFrameDigests ?? [],
   };
   return {
     ...item,
@@ -87,8 +94,22 @@ let cachedCatalog: ExerciseLibraryItem[] | undefined;
 /** The bundled catalog, sorted by name (`FreeExerciseDBLoader.load`). Parsed once. */
 export function exerciseCatalog(): ExerciseLibraryItem[] {
   if (!cachedCatalog) {
-    cachedCatalog = (catalogData as CatalogTuple[]).map(([id, name, level, force, mechanic, equipment, category, primary, secondary, frameCount, representative]) =>
-      makeExerciseLibraryItem({ id, name, level, force, mechanic, equipment, category, primaryMuscles: primary, secondaryMuscles: secondary, frameCount, representativeFrameIndex: representative }),
+    cachedCatalog = (catalogData as CatalogTuple[]).map(([id, name, level, force, mechanic, equipment, category, primary, secondary, frameCount, representative, maleDigests, femaleDigests]) =>
+      makeExerciseLibraryItem({
+        id,
+        name,
+        level,
+        force,
+        mechanic,
+        equipment,
+        category,
+        primaryMuscles: primary,
+        secondaryMuscles: secondary,
+        frameCount,
+        representativeFrameIndex: representative,
+        maleFrameDigests: maleDigests ? maleDigests.split(',') : [],
+        femaleFrameDigests: femaleDigests ? femaleDigests.split(',') : [],
+      }),
     );
   }
   return cachedCatalog;
@@ -122,9 +143,22 @@ export function frameName(item: Pick<ExerciseLibraryItem, 'id'>, sex: FrameSex, 
   return `${item.id}_${sex}_v2_${index}`;
 }
 
-export function frameURL(item: Pick<ExerciseLibraryItem, 'id' | 'frameCount'>, sex: FrameSex, index: number): string | undefined {
+/** `WorkoutFrameStore.normalizedDigest` — 8…64 lower-case hex characters, otherwise no digest. */
+export function normalizedFrameDigest(digest: string | undefined): string | undefined {
+  const value = digest?.trim().toLowerCase();
+  return value && value.length >= 8 && value.length <= 64 && /^[0-9a-f]+$/.test(value) ? value : undefined;
+}
+
+/**
+ * `WorkoutFrameStore.remoteURL`: the frame PNG on the CDN with the manifest digest as a `v`
+ * query item, so a frame replaced under the same name is fetched again instead of served
+ * from an HTTP or image cache.
+ */
+export function frameURL(item: Pick<ExerciseLibraryItem, 'id' | 'frameCount'> & Partial<Pick<ExerciseLibraryItem, 'maleFrameDigests' | 'femaleFrameDigests'>>, sex: FrameSex, index: number): string | undefined {
   if (item.frameCount <= 0 || index < 0 || index >= item.frameCount) return undefined;
-  return `${WORKOUT_FRAME_BASE_URL}/${frameName(item, sex, index)}.png`;
+  const digests = sex === 'female' ? item.femaleFrameDigests : item.maleFrameDigests;
+  const digest = normalizedFrameDigest(digests?.[index]);
+  return `${WORKOUT_FRAME_BASE_URL}/${frameName(item, sex, index)}.png${digest ? `?v=${digest}` : ''}`;
 }
 
 export function representativeFrameURL(item: ExerciseLibraryItem, sex: FrameSex): string | undefined {

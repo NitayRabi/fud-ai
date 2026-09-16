@@ -3,7 +3,7 @@
  * exercises/sets, `StrengthWorkoutBurnEstimator`, `StrengthExerciseLiftHistory`) and the
  * persistence shape of `StrengthWorkoutStore.swift`, as one reducer-backed state.
  * Set fields stay strings like the native `StrengthCompletedSet` so partially typed sets
- * round-trip; a set counts as performed once `reps` is non-empty.
+ * round-trip; a set counts as performed once `reps` parses to a positive count.
  */
 
 import { dayKey, isSameDay } from '../dates';
@@ -81,8 +81,14 @@ export interface WorkoutSession {
   caloriesBurned?: number;
 }
 
+/** Repetitions as a positive integer, or undefined for blank / "0" / garbage — same rule as `(Int(reps) ?? 0) > 0` on iOS. */
+export function performedReps(set: Pick<CompletedSet, 'reps'>): number | undefined {
+  const reps = Number.parseInt(set.reps.trim(), 10);
+  return Number.isFinite(reps) && reps > 0 ? reps : undefined;
+}
+
 export function isSetPerformed(set: Pick<CompletedSet, 'reps'>): boolean {
-  return set.reps.trim().length > 0;
+  return performedReps(set) !== undefined;
 }
 
 export function performedSetCount(session: WorkoutSession): number {
@@ -90,7 +96,7 @@ export function performedSetCount(session: WorkoutSession): number {
 }
 
 export function repCount(session: WorkoutSession): number {
-  return session.exercises.flatMap((e) => e.sets).reduce((sum, set) => sum + (Number.parseInt(set.reps, 10) || 0), 0);
+  return session.exercises.flatMap((e) => e.sets).reduce((sum, set) => sum + (performedReps(set) ?? 0), 0);
 }
 
 export function durationMinutes(session: WorkoutSession): number {
@@ -104,6 +110,10 @@ export interface DraftSet {
   weight: string;
   reps: string;
   rpe: string;
+  /** Unit `weight` was typed in; tagged on edit so a later unit toggle cannot reinterpret 185 lbs as 185 kg. */
+  weightUnit?: WeightUnit;
+  /** Scale `rpe` was typed on, for the same reason. */
+  rpeScale?: RPEScale;
 }
 
 export interface DraftExercise {
@@ -140,6 +150,8 @@ export type WorkoutsAction =
   | { type: 'draft/updateSet'; dayKey: string; exerciseId: string; set: DraftSet }
   | { type: 'draft/removeSet'; dayKey: string; exerciseId: string; setId: string }
   | { type: 'draft/discard'; dayKey: string }
+  /** The weight-unit preference changed: convert every draft weight so the numbers still mean what was typed. */
+  | { type: 'draft/convertWeightUnit'; from: WeightUnit; to: WeightUnit }
   | { type: 'session/finish'; dayKey: string; session: WorkoutSession }
   | { type: 'session/delete'; id: string }
   | { type: 'clearAll' };
@@ -195,6 +207,14 @@ export function workoutsReducer(state: WorkoutsState, action: WorkoutsAction): W
     case 'draft/discard':
       if (!state.drafts[action.dayKey]) return state;
       return updateDraft(state, action.dayKey, () => undefined);
+    case 'draft/convertWeightUnit': {
+      if (action.from === action.to || Object.keys(state.drafts).length === 0) return state;
+      const drafts: Record<string, WorkoutDraft> = {};
+      for (const [key, draft] of Object.entries(state.drafts)) {
+        drafts[key] = { ...draft, exercises: draft.exercises.map((e) => ({ ...e, sets: e.sets.map((set) => convertDraftSetWeight(set, action.from, action.to)) })) };
+      }
+      return bump(state, { drafts });
+    }
     case 'session/finish': {
       if (state.sessions.some((s) => s.id === action.session.id)) return state;
       const drafts = { ...state.drafts };
@@ -209,7 +229,31 @@ export function workoutsReducer(state: WorkoutsState, action: WorkoutsAction): W
   }
 }
 
-/** Build the immutable session from a draft when the user taps Finish. */
+/** Format a converted load the way a user would type it: at most one decimal, no trailing `.0`. */
+function formatDraftWeight(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+/**
+ * Re-express one draft set's load in `to`. A set tagged with its own unit converts from that
+ * tag (so converting twice is safe); an untagged legacy set is assumed to be in `from`.
+ * Blank or unparsable loads are only re-tagged.
+ */
+export function convertDraftSetWeight(set: DraftSet, from: WeightUnit, to: WeightUnit): DraftSet {
+  const sourceUnit = set.weightUnit ?? from;
+  if (sourceUnit === to) return set.weightUnit === to ? set : { ...set, weightUnit: to };
+  const value = Number.parseFloat(set.weight.replace(',', '.'));
+  if (!Number.isFinite(value) || value <= 0) return { ...set, weightUnit: to };
+  const converted = to === 'kg' ? value * KG_PER_LB : value / KG_PER_LB;
+  return { ...set, weight: formatDraftWeight(converted), weightUnit: to };
+}
+
+/**
+ * Build the immutable session from a draft when the user taps Finish. Each set is saved in
+ * the unit / scale it was typed under (its tag), falling back to the current preferences for
+ * legacy untagged sets.
+ */
 export function finishDraft(draft: WorkoutDraft, makeId: () => string, now: Date, preferences: WorkoutPreferences, bodyWeightKg: number): WorkoutSession {
   const started = new Date(draft.startedAt);
   const exercises: CompletedExercise[] = draft.exercises
@@ -219,9 +263,15 @@ export function finishDraft(draft: WorkoutDraft, makeId: () => string, now: Date
       name: exercise.name,
       targetMuscles: exercise.targetMuscles,
       equipment: exercise.equipment,
-      sets: exercise.sets
-        .filter(isSetPerformed)
-        .map((set, index) => ({ id: set.id, setNumber: index + 1, weight: set.weight, weightUnit: preferences.weightUnit, reps: set.reps, rpe: set.rpe, rpeScale: preferences.rpeScale })),
+      sets: exercise.sets.filter(isSetPerformed).map((set, index) => ({
+        id: set.id,
+        setNumber: index + 1,
+        weight: set.weight,
+        weightUnit: set.weightUnit ?? preferences.weightUnit,
+        reps: set.reps,
+        rpe: set.rpe,
+        rpeScale: set.rpeScale ?? preferences.rpeScale,
+      })),
     }))
     .filter((exercise) => exercise.sets.length > 0);
   const estimate = estimateBurn(exercises, bodyWeightKg, preferences.rpeScale);
@@ -239,6 +289,16 @@ export function finishDraft(draft: WorkoutDraft, makeId: () => string, now: Date
 }
 
 // MARK: - Selectors
+
+/** The most recently started unfinished draft, so a workout begun before midnight can still be finished or discarded. */
+export function activeDraftKey(drafts: Readonly<Record<string, WorkoutDraft>>): string | undefined {
+  let best: WorkoutDraft | undefined;
+  for (const draft of Object.values(drafts)) {
+    if (draft.exercises.length === 0) continue;
+    if (!best || draft.startedAt > best.startedAt) best = draft;
+  }
+  return best?.dayKey;
+}
 
 export function sessionsOn(state: WorkoutsState, day: Date): WorkoutSession[] {
   const key = dayKey(day);
@@ -305,9 +365,10 @@ export function liftHistory(sessions: readonly WorkoutSession[], itemID: string)
       if (exercise.itemID !== itemID) continue;
       const day = days.get(session.diaryDateKey) ?? { day: session.diaryDateKey, bestWeightKg: 0, totalReps: 0, sets: 0 };
       for (const set of exercise.sets) {
-        if (!isSetPerformed(set)) continue;
+        const reps = performedReps(set);
+        if (reps === undefined) continue;
         day.sets += 1;
-        day.totalReps += Number.parseInt(set.reps, 10) || 0;
+        day.totalReps += reps;
         day.bestWeightKg = Math.max(day.bestWeightKg, setWeightKg(set));
       }
       days.set(session.diaryDateKey, day);
