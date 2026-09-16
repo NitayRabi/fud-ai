@@ -29,7 +29,8 @@ export function StepperField({ value, onChange, step, unit, accessibilityLabel, 
   const parsed = Number.parseFloat(value.replace(',', '.'));
   const nudge = (direction: 1 | -1) => {
     const base = Number.isFinite(parsed) ? parsed : (min ?? 0);
-    let next = Math.round((base + direction * step) * 10) / 10;
+    const scale = 10 ** fractionDigits;
+    let next = Math.round((base + direction * step) * scale) / scale;
     if (min !== undefined) next = Math.max(min, next);
     if (max !== undefined) next = Math.min(max, next);
     onChange(next.toFixed(fractionDigits));

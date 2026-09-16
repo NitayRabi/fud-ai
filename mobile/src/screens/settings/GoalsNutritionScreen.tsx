@@ -13,7 +13,7 @@ import { AppText, PrimaryButton } from '../../components/primitives';
 import { SettingsRow, SettingsSection } from '../../components/SettingsRow';
 import { StepperField } from '../../components/StepperField';
 import { displayWeight, formatWeight, isValidWeightKg, weightKgFromDisplay } from '../../domain/body/bodyState';
-import { calculationMethodsSummary, goalSpeedTitle, weeklyChangeKg, type GoalSpeed } from '../../domain/onboarding/onboarding';
+import { calculationMethodsSummary, goalSpeedTitle, planLimits, weeklyChangeKg, type GoalSpeed } from '../../domain/onboarding/onboarding';
 import { dailyCalories, dailyTargets, weightGoalDisplayName, weightGoals, type WeightGoal } from '../../domain/profile/userProfile';
 import { profileStore, usePreferences, useProfile } from '../../state/appStores';
 import { useTheme } from '../../theme';
@@ -49,25 +49,28 @@ export function GoalsNutritionScreen() {
     <SettingsRow key={key} title={label} value={`${targets[key]} ${unit}${custom !== undefined ? ' · custom' : ''}`} onPress={() => open(key, String(targets[key]))} />
   );
 
+  // Custom targets obey the same bounds as the onboarding plan (800–5000 kcal, 20–300 g protein…),
+  // so Settings cannot pin a 0 kcal day that onboarding would refuse.
+  const macroSheet = sheet === 'calories' || sheet === 'protein' || sheet === 'carbs' || sheet === 'fat' ? sheet : undefined;
+  const macroLimits = macroSheet ? planLimits[macroSheet] : undefined;
+  const macroDraft = Number.parseInt(draft, 10);
+  const macroInvalid = macroLimits !== undefined && (!Number.isFinite(macroDraft) || macroDraft < macroLimits.min || macroDraft > macroLimits.max);
+
   const saveMacro = () => {
-    const n = Number.parseInt(draft, 10);
-    if (Number.isFinite(n) && n >= 0) {
-      switch (sheet) {
-        case 'calories':
-          update({ customCalories: n });
-          break;
-        case 'protein':
-          update({ customProtein: n });
-          break;
-        case 'carbs':
-          update({ customCarbs: n });
-          break;
-        case 'fat':
-          update({ customFat: n });
-          break;
-        default:
-          break;
-      }
+    if (!macroSheet || !macroLimits || macroInvalid) return;
+    switch (macroSheet) {
+      case 'calories':
+        update({ customCalories: macroDraft });
+        break;
+      case 'protein':
+        update({ customProtein: macroDraft });
+        break;
+      case 'carbs':
+        update({ customCarbs: macroDraft });
+        break;
+      case 'fat':
+        update({ customFat: macroDraft });
+        break;
     }
     setSheet(null);
   };
@@ -126,9 +129,22 @@ export function GoalsNutritionScreen() {
           }}
         />
       </BottomSheet>
-      <BottomSheet visible={sheet === 'calories' || sheet === 'protein' || sheet === 'carbs' || sheet === 'fat'} title={sheet ? sheet.charAt(0).toUpperCase() + sheet.slice(1) : ''} onDismiss={() => setSheet(null)}>
-        <StepperField value={draft} onChange={setDraft} step={sheet === 'calories' ? 10 : 1} unit={sheet === 'calories' ? 'kcal' : 'g'} fractionDigits={0} integerOnly min={0} accessibilityLabel={sheet ?? ''} />
-        <PrimaryButton title="Save" onPress={saveMacro} />
+      <BottomSheet visible={macroSheet !== undefined} title={macroSheet ? macroSheet.charAt(0).toUpperCase() + macroSheet.slice(1) : ''} onDismiss={() => setSheet(null)}>
+        <StepperField
+          value={draft}
+          onChange={setDraft}
+          step={macroSheet === 'calories' ? planLimits.calories.step : 1}
+          unit={macroSheet === 'calories' ? 'kcal' : 'g'}
+          fractionDigits={0}
+          integerOnly
+          min={macroLimits?.min}
+          max={macroLimits?.max}
+          accessibilityLabel={macroSheet ?? ''}
+        />
+        <AppText variant="caption" tone={macroInvalid ? 'destructive' : 'secondary'} align="center" accessibilityLiveRegion="polite">
+          {macroLimits ? `Between ${macroLimits.min.toLocaleString()} and ${macroLimits.max.toLocaleString()} ${macroSheet === 'calories' ? 'kcal' : 'g'}` : ''}
+        </AppText>
+        <PrimaryButton title="Save" disabled={macroInvalid} onPress={saveMacro} />
       </BottomSheet>
     </>
   );

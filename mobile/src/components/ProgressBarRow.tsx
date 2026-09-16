@@ -18,7 +18,8 @@ function formatMacro(value: number): string {
 /** `MacroProgressRow` — label / "current / goal" and an 8pt gradient capsule track. */
 export function ProgressBarRow({ label, current, goal, unit = 'g' }: ProgressBarRowProps) {
   const theme = useTheme();
-  const progress = goal > 0 ? Math.min(current / goal, 1) : 0;
+  // Displayed progress stays within 0–100%; nothing logged means no bar, not a 2% sliver.
+  const progress = goal > 0 ? Math.min(Math.max(current / goal, 0), 1) : 0;
   const valueText = goal > 0 ? `${formatMacro(current)}${unit} / ${goal}${unit}` : `${formatMacro(current)}${unit}`;
   return (
     <View style={{ gap: 6 }}>
@@ -35,7 +36,7 @@ export function ProgressBarRow({ label, current, goal, unit = 'g' }: ProgressBar
           colors={theme.colors.accentGradient}
           start={{ x: 0, y: 0.5 }}
           end={{ x: 1, y: 0.5 }}
-          style={{ height: 8, borderRadius: 4, width: `${Math.max(progress * 100, goal > 0 ? 2 : 0)}%` }}
+          style={{ height: 8, borderRadius: 4, width: `${progress > 0 ? Math.max(progress * 100, 2) : 0}%` }}
         />
       </View>
     </View>
