@@ -39,6 +39,7 @@ import {
   seedTargetWeight,
   setDraftMetric,
   showsOnboardingHeader,
+  targetWeightProblem,
   weeklyChangeKg,
   weightLimits,
   type GoalSpeed,
@@ -92,7 +93,9 @@ export function OnboardingFlow({ onShowPaywall, onComplete }: OnboardingFlowProp
 
   const finish = () => {
     const finalPlan = plan ?? planFromProfile(profile);
-    const customTargets = planEdited ? customTargetsForPlan(profile, finalPlan) : {};
+    // `{}` when the plan is still the raw formula; pinned when the user edited it *or* the
+    // formula had to be clamped into `planLimits`, so Home shows exactly what Plan Ready did.
+    const customTargets = customTargetsForPlan(profile, finalPlan);
     const finalProfile = { ...profile, ...customTargets };
     profileStore.dispatch({ type: 'hydrate', profile: finalProfile });
     // Onboarding seeds the first weigh-in from the real profile, never a 70 kg default.
@@ -495,14 +498,25 @@ function GoalStep({ value, onChange, onNext }: { value: WeightGoal; onChange: (g
 
 function DesiredWeightStep({ draft, onChange, onNext }: { draft: OnboardingDraft; onChange: (patch: Partial<OnboardingDraft>) => void; onNext: () => void }) {
   const metric = draft.isMetric;
+  const unit = metric ? 'kg' : 'lbs';
   const [text, setText] = useState((metric ? draft.targetWeightKg : draft.targetWeightLbs).toFixed(1));
   const limits = metric ? weightLimits.kg : weightLimits.lbs;
   const parsed = Number.parseFloat(text.replace(',', '.'));
-  const valid = Number.isFinite(parsed) && parsed >= limits.min && parsed <= limits.max;
+  // Bounds *and* direction: a loss target must sit below the current weight, a gain target above it.
+  const problem = targetWeightProblem(draft, parsed);
+  const current = (metric ? draft.weightKg : draft.weightLbs).toFixed(1);
+  const problemText =
+    problem === 'notBelowCurrent'
+      ? `To lose weight, pick a target below your current ${current} ${unit}.`
+      : problem === 'notAboveCurrent'
+        ? `To gain weight, pick a target above your current ${current} ${unit}.`
+        : problem === 'outOfRange'
+          ? `Enter a weight between ${limits.min} and ${limits.max} ${unit}.`
+          : undefined;
   return (
     <View style={{ flex: 1 }}>
       <StepHeader title={"What's your\ndesired weight?"} subtitle={weightGoalDisplayName(draft.goal)} />
-      <View style={{ flex: 1, justifyContent: 'center' }}>
+      <View style={{ flex: 1, justifyContent: 'center', gap: 16 }}>
         <StepperField
           value={text}
           onChange={(v) => {
@@ -511,13 +525,18 @@ function DesiredWeightStep({ draft, onChange, onNext }: { draft: OnboardingDraft
             if (Number.isFinite(n)) onChange(metric ? { targetWeightKg: n } : { targetWeightLbs: n });
           }}
           step={0.1}
-          unit={metric ? 'kg' : 'lbs'}
+          unit={unit}
           min={limits.min}
           max={limits.max}
           accessibilityLabel="Desired weight"
         />
+        {problemText ? (
+          <AppText variant="footnote" tone="destructive" align="center" style={{ paddingHorizontal: 32 }} accessibilityLiveRegion="polite">
+            {problemText}
+          </AppText>
+        ) : null}
       </View>
-      <ContinueButton onPress={onNext} disabled={!valid} />
+      <ContinueButton onPress={onNext} disabled={problem !== undefined} />
     </View>
   );
 }

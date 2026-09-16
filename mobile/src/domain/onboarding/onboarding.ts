@@ -165,9 +165,25 @@ export function seedTargetWeight(draft: OnboardingDraft): OnboardingDraft {
   const kgDelta = draft.goal === 'lose' ? -5 : draft.goal === 'gain' ? 5 : 0;
   return {
     ...draft,
-    targetWeightLbs: Math.max(weightLimits.lbs.min, roundTenth(draft.weightLbs + lbsDelta)),
-    targetWeightKg: Math.max(weightLimits.kg.min, roundTenth(draft.weightKg + kgDelta)),
+    targetWeightLbs: clamp(roundTenth(draft.weightLbs + lbsDelta), weightLimits.lbs.min, weightLimits.lbs.max),
+    targetWeightKg: clamp(roundTenth(draft.weightKg + kgDelta), weightLimits.kg.min, weightLimits.kg.max),
   };
+}
+
+export type TargetWeightProblem = 'outOfRange' | 'notBelowCurrent' | 'notAboveCurrent';
+
+/**
+ * Why a desired weight cannot be continued with, in the unit being edited: outside the bounds,
+ * or pointing the wrong way for the chosen goal (a "lose" target at or above the current
+ * weight would make `weightDiffKg` / the pace math describe a gain). `maintain` has no target.
+ */
+export function targetWeightProblem(draft: OnboardingDraft, target: number): TargetWeightProblem | undefined {
+  const limits = draft.isMetric ? weightLimits.kg : weightLimits.lbs;
+  if (!Number.isFinite(target) || target < limits.min || target > limits.max) return 'outOfRange';
+  const current = draft.isMetric ? draft.weightKg : draft.weightLbs;
+  if (draft.goal === 'lose' && target >= current) return 'notBelowCurrent';
+  if (draft.goal === 'gain' && target <= current) return 'notAboveCurrent';
+  return undefined;
 }
 
 /** Toggle Imperial ↔ Metric, converting the values being edited so nothing is lost. */
@@ -228,40 +244,69 @@ export const planLimits = {
 
 export const MINIMUM_RECOMMENDED_CALORIES = 1200;
 
-/** The formula plan the Building Plan step lands on (`profile.dailyCalories` etc.). */
-export function planFromProfile(profile: UserProfile, now: Date = new Date()): NutritionPlan {
+/** The raw formula (`profile.dailyCalories` etc.) — what the profile computes when no custom targets are stored. */
+export function formulaPlan(profile: UserProfile, now: Date = new Date()): NutritionPlan {
   return { calories: dailyCalories(profile, now), protein: proteinGoal(profile), fat: fatGoal(profile), carbs: carbsGoal(profile, now) };
+}
+
+/**
+ * The plan the Building Plan step lands on: the formula, held within `planLimits` so an
+ * aggressive pace on a small frame can never present (or persist) a zero or negative target.
+ * When clamping changes anything, `customTargetsForPlan` stores the result as custom targets
+ * because the profile's own formula would otherwise reproduce the unclamped numbers.
+ */
+export function planFromProfile(profile: UserProfile, now: Date = new Date()): NutritionPlan {
+  return normalizePlan(formulaPlan(profile, now));
 }
 
 function residualCarbs(calories: number, protein: number, fat: number): number {
   return Math.max(0, Math.trunc((calories - protein * kcalPerGram.protein - fat * kcalPerGram.fat) / kcalPerGram.carbs));
 }
 
+/**
+ * Invariants every plan keeps after any edit: protein and fat inside their limits, calories
+ * inside `planLimits.calories` and never below the energy protein + fat already account for,
+ * carbs the residual. So calories, protein, fat and carbs always agree.
+ */
+export function normalizePlan(plan: NutritionPlan): NutritionPlan {
+  const protein = clamp(Math.round(plan.protein), planLimits.protein.min, planLimits.protein.max);
+  const fat = clamp(Math.round(plan.fat), planLimits.fat.min, planLimits.fat.max);
+  const macroFloor = protein * kcalPerGram.protein + fat * kcalPerGram.fat;
+  const calories = Math.max(clamp(Math.round(plan.calories), planLimits.calories.min, planLimits.calories.max), macroFloor);
+  const carbs = residualCarbs(calories, protein, fat);
+  return plan.calories === calories && plan.protein === protein && plan.fat === fat && plan.carbs === carbs ? plan : { calories, protein, fat, carbs };
+}
+
 /** Editing calories keeps protein/fat and re-derives carbs. */
 export function editPlanCalories(plan: NutritionPlan, calories: number): NutritionPlan {
   const value = clamp(Math.round(calories / planLimits.calories.step) * planLimits.calories.step, planLimits.calories.min, planLimits.calories.max);
-  return { ...plan, calories: value, carbs: residualCarbs(value, plan.protein, plan.fat) };
+  return normalizePlan({ ...plan, calories: value });
 }
 
 export function editPlanProtein(plan: NutritionPlan, protein: number): NutritionPlan {
-  const value = clamp(Math.round(protein), planLimits.protein.min, planLimits.protein.max);
-  return { ...plan, protein: value, carbs: residualCarbs(plan.calories, value, plan.fat) };
+  return normalizePlan({ ...plan, protein });
 }
 
 export function editPlanFat(plan: NutritionPlan, fat: number): NutritionPlan {
-  const value = clamp(Math.round(fat), planLimits.fat.min, planLimits.fat.max);
-  return { ...plan, fat: value, carbs: residualCarbs(plan.calories, plan.protein, value) };
+  return normalizePlan({ ...plan, fat });
 }
 
-/** Editing carbs recomputes calories so the three macros always add up. */
+/**
+ * Editing carbs recomputes calories so the three macros always add up; if that total would
+ * leave the calorie limits, calories stop at the limit and carbs become the residual again.
+ */
 export function editPlanCarbs(plan: NutritionPlan, carbs: number): NutritionPlan {
   const value = clamp(Math.round(carbs), planLimits.carbs.min, planLimits.carbs.max);
-  return { ...plan, carbs: value, calories: value * kcalPerGram.carbs + plan.protein * kcalPerGram.protein + plan.fat * kcalPerGram.fat };
+  return normalizePlan({ ...plan, carbs: value, calories: value * kcalPerGram.carbs + plan.protein * kcalPerGram.protein + plan.fat * kcalPerGram.fat });
 }
 
-/** Custom targets to store when the user hand-tuned the plan; undefined keeps the formula. */
+/**
+ * Custom targets to store for the finished plan; `{}` keeps the profile on its formula. The
+ * comparison is against the raw formula, so a plan that only differs because of clamping is
+ * still pinned.
+ */
 export function customTargetsForPlan(profile: UserProfile, plan: NutritionPlan, now: Date = new Date()): Partial<UserProfile> {
-  const formula = planFromProfile(profile, now);
+  const formula = formulaPlan(profile, now);
   if (formula.calories === plan.calories && formula.protein === plan.protein && formula.fat === plan.fat && formula.carbs === plan.carbs) return {};
   return { customCalories: plan.calories, customProtein: plan.protein, customFat: plan.fat, customCarbs: plan.carbs };
 }
