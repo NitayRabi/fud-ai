@@ -3,6 +3,8 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'r
 import { Alert, AppState, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ActionListSheet, type ActionListItem } from '../../components/ActionListSheet';
+import { ComingSoonSheet } from '../../components/ComingSoonSheet';
 import { Icon } from '../../components/Icon';
 import { CalorieGauge } from '../../components/home/CalorieGauge';
 import { FastingRow, FoodRow, WaterLogRow } from '../../components/home/DiaryRows';
@@ -28,15 +30,44 @@ import { waterDisplayAmount, waterUnitSymbol } from '../../domain/water/water';
 import { aiErrorMessage } from '../../domain/ai/errors';
 import { foodEntryInputFromAnalysis, type FoodAnalysis, type FoodAnalysisKind } from '../../domain/food/analysis';
 import { favoriteEntries, recentEntries } from '../../domain/diary/diaryState';
+import type { FastingSession } from '../../domain/fasting/fasting';
+import type { WaterEntry } from '../../domain/water/water';
 import { analyzeFood } from '../../services/aiClient';
 import { deleteFoodImage, storeFoodImage } from '../../services/foodImageStore';
 import { ImagePermissionError, pickImage, type ImageSource } from '../../services/imagePicker';
 import { diaryStore, newId, setPreferences, useDiary, usePreferences, useProfile } from '../../state/appStores';
 import { useTheme } from '../../theme';
 import { AnalyzingOverlay, FoodResultSheet, SavedMealsSheet, TextFoodInputSheet, type FoodResultSave } from './FoodAISheets';
-import { AddMenuSheet, FastingStartSheet, ManualEntrySheet, WaterCustomSheet, type AddMenuAction } from './HomeSheets';
+import {
+  AddMenuSheet,
+  FastingStartSheet,
+  ManualEntrySheet,
+  NutritionDetailSheet,
+  WaterCustomSheet,
+  type AddMenuAction,
+} from './HomeSheets';
 
-type Sheet = 'add' | 'waterCustom' | 'fastingStart' | 'manualEntry' | 'describeMeal' | 'voiceMeal' | 'savedMeals' | 'review' | null;
+type Sheet =
+  | 'add'
+  | 'waterCustom'
+  | 'fastingStart'
+  | 'manualEntry'
+  | 'describeMeal'
+  | 'voiceMeal'
+  | 'savedMeals'
+  | 'review'
+  | 'nutritionDetail'
+  | 'imageSource'
+  | 'barcodeInfo'
+  | 'foodActions'
+  | 'waterActions'
+  | 'fastingActions'
+  | null;
+
+type DiaryTarget =
+  | { kind: 'food'; entry: FoodEntry }
+  | { kind: 'water'; entry: WaterEntry }
+  | { kind: 'fasting'; session: FastingSession };
 
 interface PendingAnalysis {
   kind: FoodAnalysisKind;
@@ -68,6 +99,8 @@ export function HomeScreen() {
   const [now, setNow] = useState(() => new Date());
   const [pending, setPending] = useState<PendingAnalysis | null>(null);
   const [review, setReview] = useState<ReviewState | null>(null);
+  const [imageSourceKind, setImageSourceKind] = useState<'photo' | 'nutritionLabel'>('photo');
+  const [diaryTarget, setDiaryTarget] = useState<DiaryTarget | null>(null);
   const analysisAbort = useRef<AbortController | null>(null);
 
   const diary = useDiary((state) => state);
@@ -203,12 +236,124 @@ export function HomeScreen() {
     }
   };
 
-  const chooseImageSource = (kind: 'photo' | 'nutritionLabel') =>
-    Alert.alert(kind === 'photo' ? 'Scan Food' : 'Scan Nutrition Label', undefined, [
-      { text: 'Take Photo', onPress: () => void captureAndAnalyze(kind, 'camera') },
-      { text: 'Choose from Library', onPress: () => void captureAndAnalyze(kind, 'library') },
+  const chooseImageSource = (kind: 'photo' | 'nutritionLabel') => {
+    setImageSourceKind(kind);
+    setSheet('imageSource');
+  };
+
+  const confirmDeleteFood = (entry: FoodEntry) =>
+    Alert.alert('Delete Entry?', entry.name, [
       { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteFoodEntry(entry) },
     ]);
+
+  const confirmDeleteWater = (entry: WaterEntry) =>
+    Alert.alert('Delete Entry?', undefined, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => diaryStore.dispatch({ type: 'water/delete', id: entry.id }) },
+    ]);
+
+  const confirmDeleteFast = (session: FastingSession) =>
+    Alert.alert('Delete Entry?', undefined, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => diaryStore.dispatch({ type: 'fasting/delete', id: session.id }) },
+    ]);
+
+  const openDiaryActions = (target: DiaryTarget) => {
+    setDiaryTarget(target);
+    setSheet(target.kind === 'food' ? 'foodActions' : target.kind === 'water' ? 'waterActions' : 'fastingActions');
+  };
+
+  const foodActionItems = useMemo((): ActionListItem[] => {
+    if (!diaryTarget || diaryTarget.kind !== 'food') return [];
+    const entry = diaryTarget.entry;
+    const favorited = isFavorite(diary, entry);
+    return [
+      {
+        id: 'favorite',
+        title: favorited ? 'Unfavorite' : 'Favorite',
+        icon: favorited ? 'heart.slash.fill' : 'heart.fill',
+        onPress: () => diaryStore.dispatch({ type: 'food/toggleFavorite', entry }),
+      },
+      {
+        id: 'delete',
+        title: 'Delete',
+        icon: 'trash',
+        destructive: true,
+        onPress: () => confirmDeleteFood(entry),
+      },
+    ];
+  }, [diary, diaryTarget]);
+
+  const waterActionItems = useMemo((): ActionListItem[] => {
+    if (!diaryTarget || diaryTarget.kind !== 'water') return [];
+    const entry = diaryTarget.entry;
+    return [
+      {
+        id: 'delete',
+        title: 'Delete',
+        icon: 'trash',
+        destructive: true,
+        onPress: () => confirmDeleteWater(entry),
+      },
+    ];
+  }, [diaryTarget]);
+
+  const fastingActionItems = useMemo((): ActionListItem[] => {
+    if (!diaryTarget || diaryTarget.kind !== 'fasting') return [];
+    const session = diaryTarget.session;
+    if (session.endedAt === undefined) {
+      return [
+        { id: 'end', title: 'End Fast', icon: 'stop.fill', onPress: endFast },
+        { id: 'cancel', title: 'Cancel Fast', icon: 'trash', destructive: true, onPress: cancelFast },
+      ];
+    }
+    return [
+      {
+        id: 'delete',
+        title: 'Delete',
+        icon: 'trash',
+        destructive: true,
+        onPress: () => confirmDeleteFast(session),
+      },
+    ];
+  }, [diaryTarget]);
+
+  const imageSourceActions = useMemo(
+    (): ActionListItem[] => [
+      {
+        id: 'camera',
+        title: 'Take Photo',
+        icon: 'camera.fill',
+        onPress: () => void captureAndAnalyze(imageSourceKind, 'camera'),
+      },
+      {
+        id: 'library',
+        title: 'Choose from Library',
+        icon: 'photo.on.rectangle',
+        onPress: () => void captureAndAnalyze(imageSourceKind, 'library'),
+      },
+    ],
+    [imageSourceKind],
+  );
+
+  const nutritionDetailRows = useMemo(() => {
+    const ids = (Object.keys(homeNutrients) as (keyof typeof homeNutrients)[]).filter(
+      (id) => id !== 'protein' && id !== 'carbs' && id !== 'fat' && homeNutrients[id].total(dayFood) > 0,
+    );
+    return ids.map((id) => {
+      const def = homeNutrients[id];
+      const value = def.total(dayFood);
+      const goal = homeNutrientGoal(id, targets);
+      return {
+        id,
+        label: def.displayName,
+        value: value >= 10 ? String(Math.round(value)) : value.toFixed(1),
+        unit: def.unit,
+        ...(goal > 0 ? { goal: `${goal} ${def.unit}` } : {}),
+      };
+    });
+  }, [dayFood, targets]);
 
   const saveReview = (result: FoodResultSave) => {
     if (!review) return;
@@ -275,7 +420,8 @@ export function HomeScreen() {
             openSheet('savedMeals');
             return;
           case 'barcode':
-            Alert.alert('Scan Barcode', 'Barcode lookup (Open Food Facts) stays in the native apps for now. Use Scan Food or Describe Meal.');
+            setSheet('barcodeInfo');
+            return;
         }
     }
   };
@@ -313,7 +459,7 @@ export function HomeScreen() {
             title="View More  ›"
             variant="subheadline"
             style={{ alignSelf: 'center', opacity: 0.6 }}
-            onPress={() => Alert.alert('Nutrition detail', 'The full nutrient breakdown is being ported to the shared app.')}
+            onPress={() => openSheet('nutritionDetail')}
           />
         </View>
 
@@ -362,45 +508,14 @@ export function HomeScreen() {
                           <FoodRow
                             entry={item.entry}
                             isFavorite={isFavorite(diary, item.entry)}
-                            onPress={() =>
-                              Alert.alert(item.entry.name, undefined, [
-                                {
-                                  text: isFavorite(diary, item.entry) ? 'Unfavorite' : 'Favorite',
-                                  onPress: () => diaryStore.dispatch({ type: 'food/toggleFavorite', entry: item.entry }),
-                                },
-                                { text: 'Delete', style: 'destructive', onPress: () => deleteFoodEntry(item.entry) },
-                                { text: 'Cancel', style: 'cancel' },
-                              ])
-                            }
+                            onPress={() => openDiaryActions({ kind: 'food', entry: item.entry })}
                           />
                         ) : item.kind === 'water' ? (
-                          <Pressable
-                            onLongPress={() =>
-                              Alert.alert('Delete water entry?', undefined, [
-                                { text: 'Cancel', style: 'cancel' },
-                                { text: 'Delete', style: 'destructive', onPress: () => diaryStore.dispatch({ type: 'water/delete', id: item.entry.id }) },
-                              ])
-                            }
-                          >
+                          <Pressable onPress={() => openDiaryActions({ kind: 'water', entry: item.entry })} onLongPress={() => openDiaryActions({ kind: 'water', entry: item.entry })}>
                             <WaterLogRow entry={item.entry} unit={prefs.waterUnit} />
                           </Pressable>
                         ) : (
-                          <FastingRow
-                            session={item.session}
-                            now={now}
-                            onPress={() =>
-                              item.session.endedAt === undefined
-                                ? Alert.alert('Fasting', undefined, [
-                                    { text: 'End Fast', onPress: endFast },
-                                    { text: 'Cancel Fast', style: 'destructive', onPress: cancelFast },
-                                    { text: 'Close', style: 'cancel' },
-                                  ])
-                                : Alert.alert('Delete fast?', undefined, [
-                                    { text: 'Cancel', style: 'cancel' },
-                                    { text: 'Delete', style: 'destructive', onPress: () => diaryStore.dispatch({ type: 'fasting/delete', id: item.session.id }) },
-                                  ])
-                            }
-                          />
+                          <FastingRow session={item.session} now={now} onPress={() => openDiaryActions({ kind: 'fasting', session: item.session })} />
                         )}
                       </View>
                     </View>
@@ -511,6 +626,64 @@ export function HomeScreen() {
           setSheet(null);
         }}
         onSave={saveReview}
+      />
+      <ActionListSheet
+        visible={sheet === 'imageSource'}
+        title={imageSourceKind === 'photo' ? 'Scan Food' : 'Scan Nutrition Label'}
+        actions={imageSourceActions}
+        onDismiss={() => setSheet(null)}
+      />
+      <ActionListSheet
+        visible={sheet === 'foodActions'}
+        title={diaryTarget?.kind === 'food' ? diaryTarget.entry.name : 'Food'}
+        actions={foodActionItems}
+        onDismiss={() => {
+          setDiaryTarget(null);
+          setSheet(null);
+        }}
+      />
+      <ActionListSheet
+        visible={sheet === 'waterActions'}
+        title="Water"
+        actions={waterActionItems}
+        onDismiss={() => {
+          setDiaryTarget(null);
+          setSheet(null);
+        }}
+      />
+      <ActionListSheet
+        visible={sheet === 'fastingActions'}
+        title="Fasting"
+        actions={fastingActionItems}
+        onDismiss={() => {
+          setDiaryTarget(null);
+          setSheet(null);
+        }}
+      />
+      <ComingSoonSheet
+        visible={sheet === 'barcodeInfo'}
+        title="Scan Barcode"
+        icon="barcode"
+        message="Barcode lookup (Open Food Facts) stays in the native apps for now. Use Scan Food or Describe Meal."
+        onDismiss={() => setSheet(null)}
+      />
+      <NutritionDetailSheet
+        visible={sheet === 'nutritionDetail'}
+        date={selectedDate}
+        calories={caloriesOn(diary, selectedDate)}
+        calorieGoal={targets.calories}
+        protein={homeNutrients.protein.total(dayFood)}
+        proteinGoal={targets.protein}
+        carbs={homeNutrients.carbs.total(dayFood)}
+        carbsGoal={targets.carbs}
+        fat={homeNutrients.fat.total(dayFood)}
+        fatGoal={targets.fat}
+        waterEnabled={prefs.waterTrackingEnabled}
+        waterMilliliters={waterTotalOn(diary, selectedDate)}
+        waterGoalMilliliters={prefs.waterDailyGoalMl}
+        waterUnit={prefs.waterUnit}
+        detailRows={nutritionDetailRows}
+        onDismiss={() => setSheet(null)}
       />
     </Screen>
   );

@@ -31,17 +31,20 @@ interface ActionListSheetProps {
  * menu — camera/library, diary row actions, Coach attach, etc. Identical on both platforms;
  * never use `Alert.alert` for multi-choice menus.
  */
+/** Native Modal slide dismiss is ~300ms; wait past it before opening camera / alerts / next sheets. */
+const DISMISS_THEN_ACTION_MS = 320;
+
 export function ActionListSheet({ visible, title, message, actions, onDismiss, dismissOnAction = true }: ActionListSheetProps) {
   const theme = useTheme();
   const run = (action: ActionListItem) => {
     if (action.disabled) return;
     if (dismissOnAction) onDismiss();
-    // Let the dismiss animation start before opening the next surface (camera, confirm, etc.).
-    requestAnimationFrame(() => action.onPress());
+    // Wait for the Modal slide to finish — one rAF is not enough for camera/picker/alerts.
+    setTimeout(() => action.onPress(), dismissOnAction ? DISMISS_THEN_ACTION_MS : 0);
   };
 
   return (
-    <BottomSheet visible={visible} title={title} onDismiss={onDismiss} surface="background" detent="auto" scrollable={actions.length > 8}>
+    <BottomSheet visible={visible} title={title} onDismiss={onDismiss} surface="background" detent="auto" scrollable>
       {message ? (
         <AppText variant="subheadline" tone="secondary">
           {message}

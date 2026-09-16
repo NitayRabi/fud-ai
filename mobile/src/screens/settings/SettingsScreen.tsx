@@ -1,7 +1,9 @@
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
-import { Alert, ScrollView, View } from 'react-native';
+import { useState } from 'react';
+import { ScrollView, View } from 'react-native';
 
+import { ComingSoonSheet } from '../../components/ComingSoonSheet';
 import type { SFSymbolName } from '../../components/Icon';
 import { AppText, Screen } from '../../components/primitives';
 import { SettingsRow, SettingsSection } from '../../components/SettingsRow';
@@ -49,12 +51,13 @@ export function SettingsScreen() {
     .slice(0, 2)
     .map((part) => part.charAt(0).toUpperCase())
     .join('');
+  const [comingSoon, setComingSoon] = useState<{ title: string; icon: SFSymbolName } | null>(null);
 
   const open = (category: Category) => () => {
     if (category.route) {
       navigation.navigate(category.route);
     } else {
-      Alert.alert(category.title, 'This section is being ported to the shared app.');
+      setComingSoon({ title: category.title, icon: category.icon });
     }
   };
 
@@ -86,6 +89,14 @@ export function SettingsScreen() {
           Fud AI 7.1 (38)
         </AppText>
       </ScrollView>
+
+      <ComingSoonSheet
+        visible={comingSoon !== null}
+        title={comingSoon?.title ?? ''}
+        icon={comingSoon?.icon}
+        message="This section is being ported to the shared app. Open it in the native Fud AI app for the full settings."
+        onDismiss={() => setComingSoon(null)}
+      />
     </Screen>
   );
 }

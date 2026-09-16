@@ -18,7 +18,7 @@ import { dailyCalories, dailyTargets, weightGoalDisplayName, weightGoals, type W
 import { profileStore, usePreferences, useProfile } from '../../state/appStores';
 import { useTheme } from '../../theme';
 
-type Sheet = 'goal' | 'pace' | 'goalWeight' | 'calories' | 'protein' | 'carbs' | 'fat' | null;
+type Sheet = 'goal' | 'pace' | 'goalWeight' | 'calories' | 'protein' | 'carbs' | 'fat' | 'methods' | null;
 
 function speedForRate(rate: number | undefined): GoalSpeed {
   if (rate === undefined) return 1;
@@ -95,12 +95,19 @@ export function GoalsNutritionScreen() {
 
         <SettingsSection>
           <SettingsRow icon="arrow.triangle.2.circlepath.circle.fill" title="Recalculate Goals" onPress={recalculate} chevron={false} />
-          <SettingsRow icon="book.fill" title="How is this calculated?" onPress={() => Alert.alert('Calculation methods', calculationMethodsSummary(profile))} chevron={false} />
+          <SettingsRow icon="book.fill" title="How is this calculated?" onPress={() => setSheet('methods')} chevron={false} />
         </SettingsSection>
         <AppText variant="footnote" tone="tertiary" align="center">
           Adaptive Goals (weekly automatic adjustment) is being ported from the native apps.
         </AppText>
       </ScrollView>
+
+      <BottomSheet visible={sheet === 'methods'} title="Calculation methods" onDismiss={() => setSheet(null)} surface="card" detent="medium">
+        <AppText variant="subheadline" tone="secondary">
+          {calculationMethodsSummary(profile)}
+        </AppText>
+        <PrimaryButton title="Done" onPress={() => setSheet(null)} />
+      </BottomSheet>
 
       <PickerSheet<WeightGoal>
         visible={sheet === 'goal'}

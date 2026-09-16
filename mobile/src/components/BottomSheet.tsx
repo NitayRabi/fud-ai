@@ -79,12 +79,16 @@ export function BottomSheet({
       },
       onPanResponderRelease: (_, gesture) => {
         if (gesture.dy > 100 || gesture.vy > 0.9) {
+          // Leave translateY where the drag ended so Modal's slide-out doesn't snap back first.
+          // Reset happens when `visible` becomes true again (useEffect above).
           Animated.timing(translateY, { toValue: 420, duration: 160, useNativeDriver: true }).start(() => {
-            translateY.setValue(0);
             onDismissRef.current();
           });
           return;
         }
+        Animated.spring(translateY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
+      },
+      onPanResponderTerminate: () => {
         Animated.spring(translateY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
       },
     }),

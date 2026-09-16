@@ -11,8 +11,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Switch, View } from 'react-native';
 
 import { Icon, type SFSymbolName } from '../../components/Icon';
+import { BottomSheet } from '../../components/BottomSheet';
 import { PickerSheet } from '../../components/PickerSheet';
-import { AppText, Card, Divider, Row, Screen } from '../../components/primitives';
+import { AppText, Card, Divider, PrimaryButton, Row, Screen } from '../../components/primitives';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { StepperField } from '../../components/StepperField';
 import type { AISetupSubstep } from '../../domain/ai/onboardingValidation';
@@ -751,6 +752,7 @@ function PlanReadyStep({ plan, profile, onChange, onFinish }: { plan: NutritionP
   const theme = useTheme();
   const [editing, setEditing] = useState<EditableField | null>(null);
   const [text, setText] = useState('');
+  const [methodsVisible, setMethodsVisible] = useState(false);
   const beginEdit = (field: EditableField) => {
     if (editing === field) {
       setEditing(null);
@@ -836,7 +838,7 @@ function PlanReadyStep({ plan, profile, onChange, onFinish }: { plan: NutritionP
             </View>
           </Row>
         ) : null}
-        <Pressable accessibilityRole="button" onPress={() => Alert.alert('How is this calculated?', calculationMethodsSummary(profile))} style={{ alignSelf: 'center', paddingTop: 8 }}>
+        <Pressable accessibilityRole="button" onPress={() => setMethodsVisible(true)} style={{ alignSelf: 'center', paddingTop: 8 }}>
           <Row style={{ gap: 6 }}>
             <Icon name="book.fill" size={11} color={theme.colors.accent} />
             <AppText variant="footnoteSemibold" tone="accent">
@@ -855,6 +857,12 @@ function PlanReadyStep({ plan, profile, onChange, onFinish }: { plan: NutritionP
           </LinearGradient>
         </Pressable>
       </View>
+      <BottomSheet visible={methodsVisible} title="How is this calculated?" onDismiss={() => setMethodsVisible(false)} surface="card" detent="medium">
+        <AppText variant="subheadline" tone="secondary">
+          {calculationMethodsSummary(profile)}
+        </AppText>
+        <PrimaryButton title="Done" onPress={() => setMethodsVisible(false)} />
+      </BottomSheet>
     </View>
   );
 }
