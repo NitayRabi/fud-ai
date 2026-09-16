@@ -6,6 +6,7 @@
 import { randomUUID } from 'expo-crypto';
 import { useSyncExternalStore } from 'react';
 
+import { bodyReducer, initialBodyState, type BodyAction, type BodyState } from '../domain/body/bodyState';
 import { diaryReducer, initialDiaryState, type DiaryAction, type DiaryState } from '../domain/diary/diaryState';
 import { defaultPreferences, mergePreferences, type Preferences } from '../domain/prefs/preferences';
 import { defaultUserProfile, type UserProfile } from '../domain/profile/userProfile';
@@ -24,6 +25,7 @@ export const storageKeys = {
   diary: 'fudai.diary.v1',
   preferences: 'fudai.preferences.v1',
   profile: 'fudai.profile.v1',
+  body: 'fudai.body.v1',
 } as const;
 
 export function newId(): string {
@@ -33,6 +35,10 @@ export function newId(): string {
 // MARK: - Diary (food + water + fasting)
 
 export const diaryStore: Store<DiaryState, DiaryAction> = createStore(diaryReducer, initialDiaryState);
+
+// MARK: - Body (weight + body fat history)
+
+export const bodyStore: Store<BodyState, BodyAction> = createStore(bodyReducer, initialBodyState);
 
 // MARK: - Preferences
 
@@ -159,6 +165,10 @@ export function useDiary<T>(selector: (state: DiaryState) => T): T {
   return useStoreSelector(diaryStore, selector);
 }
 
+export function useBody<T>(selector: (state: BodyState) => T): T {
+  return useStoreSelector(bodyStore, selector);
+}
+
 export function usePreferences<T>(selector: (state: Preferences) => T): T {
   return useStoreSelector(preferencesStore, selector);
 }
@@ -178,6 +188,11 @@ interface PersistedDiary {
   waterEntries: DiaryState['waterEntries'];
   fastingSessions: DiaryState['fastingSessions'];
   favoriteKeys: DiaryState['favoriteKeys'];
+}
+
+interface PersistedBody {
+  weightEntries: BodyState['weightEntries'];
+  bodyFatEntries: BodyState['bodyFatEntries'];
 }
 
 export type PersistenceFailure = { phase: 'read' | 'write'; key: string; error: unknown };
@@ -228,15 +243,17 @@ async function readStore<T>(kv: KeyValueStore, key: string): Promise<StoreRead<T
  * every failure goes through `reportPersistenceFailure`.
  */
 export async function hydrateAndPersistStores(kv: KeyValueStore = asyncKeyValueStore): Promise<() => void> {
-  const [diary, preferences, profile] = await Promise.all([
+  const [diary, preferences, profile, body] = await Promise.all([
     readStore<PersistedDiary>(kv, storageKeys.diary),
     readStore<Partial<Preferences>>(kv, storageKeys.preferences),
     readStore<UserProfile>(kv, storageKeys.profile),
+    readStore<PersistedBody>(kv, storageKeys.body),
   ]);
 
   if (diary.value) diaryStore.dispatch({ type: 'hydrate', state: diary.value });
   preferencesStore.dispatch({ type: 'hydrate', preferences: mergePreferences(preferences.value) });
   if (profile.value) profileStore.dispatch({ type: 'hydrate', profile: { ...defaultUserProfile, ...profile.value } });
+  if (body.value) bodyStore.dispatch({ type: 'hydrate', state: body.value });
 
   const unsubscribes: (() => void)[] = [];
   if (diary.readable) {
@@ -251,6 +268,11 @@ export async function hydrateAndPersistStores(kv: KeyValueStore = asyncKeyValueS
   }
   if (preferences.readable) unsubscribes.push(persistOnChange(preferencesStore, kv, storageKeys.preferences, (state) => state));
   if (profile.readable) unsubscribes.push(persistOnChange(profileStore, kv, storageKeys.profile, (state) => state));
+  if (body.readable) {
+    unsubscribes.push(
+      persistOnChange(bodyStore, kv, storageKeys.body, (state): PersistedBody => ({ weightEntries: state.weightEntries, bodyFatEntries: state.bodyFatEntries })),
+    );
+  }
 
   return () => unsubscribes.forEach((fn) => fn());
 }
