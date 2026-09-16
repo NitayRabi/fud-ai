@@ -6,6 +6,7 @@ import { Platform, StyleSheet, View } from 'react-native';
 
 import { GlassChrome } from '../../modules/glass-chrome';
 import { Icon, type SFSymbolName } from '../components/Icon';
+import { CoachScreen } from '../screens/coach/CoachScreen';
 import { HomeScreen } from '../screens/home/HomeScreen';
 import { PlaceholderScreen } from '../screens/PlaceholderScreen';
 import { ProgressScreen } from '../screens/progress/ProgressScreen';
@@ -100,9 +101,7 @@ export function RootNavigator() {
       >
         <Tab.Screen name="Home" component={HomeScreen} />
         <Tab.Screen name="Progress" component={ProgressScreen} />
-        <Tab.Screen name="Coach">
-          {() => <PlaceholderScreen title="Coach" icon="bubble.left.and.bubble.right.fill" description="The AI coach chat is being ported to the shared app." />}
-        </Tab.Screen>
+        <Tab.Screen name="Coach" component={CoachScreen} />
         <Tab.Screen name="Settings" component={SettingsStackScreen} />
         <Tab.Screen name="Workouts">
           {() => <PlaceholderScreen title="Workouts" icon="dumbbell" description="Strength logging and the exercise library are being ported to the shared app." />}
