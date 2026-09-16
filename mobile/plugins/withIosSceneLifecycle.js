@@ -100,8 +100,10 @@ function withSceneAppDelegate(config) {
       const entries = fs.readdirSync(iosRoot, { withFileTypes: true });
       const appDir = entries.find((e) => e.isDirectory() && fs.existsSync(path.join(iosRoot, e.name, 'AppDelegate.swift')));
       if (!appDir) {
-        console.warn('[withIosSceneLifecycle] AppDelegate.swift not found; skip');
-        return config;
+        // Fail prebuild rather than ship a scene-manifest-only project that still crashes on launch.
+        throw new Error(
+          '[withIosSceneLifecycle] AppDelegate.swift not found under ios/. Cannot wire ExpoAppSceneDelegate without rewriting the app delegate.',
+        );
       }
       const target = path.join(iosRoot, appDir.name, 'AppDelegate.swift');
       fs.writeFileSync(target, APP_DELEGATE);
