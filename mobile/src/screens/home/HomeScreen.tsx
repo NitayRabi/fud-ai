@@ -21,15 +21,32 @@ import {
 } from '../../domain/diary/diaryState';
 import { displayedHomeNutrients, homeNutrientGoal, homeNutrients } from '../../domain/diary/homeNutrients';
 import { homeDiaryMealGroups, type FoodLogSortOrder } from '../../domain/diary/mealGroups';
-import { makeFoodEntry, mealTypeDisplayName } from '../../domain/food/food';
+import { makeFoodEntry, mealTypeDisplayName, type FoodEntry } from '../../domain/food/food';
 import { parseHomeTopNutrients } from '../../domain/prefs/preferences';
 import { dailyTargets } from '../../domain/profile/userProfile';
 import { waterDisplayAmount, waterUnitSymbol } from '../../domain/water/water';
+import { aiErrorMessage } from '../../domain/ai/errors';
+import { foodEntryInputFromAnalysis, type FoodAnalysis, type FoodAnalysisKind } from '../../domain/food/analysis';
+import { favoriteEntries, recentEntries } from '../../domain/diary/diaryState';
+import { analyzeFood } from '../../services/aiClient';
+import { ImagePermissionError, pickImage, type ImageSource } from '../../services/imagePicker';
 import { diaryStore, newId, setPreferences, useDiary, usePreferences, useProfile } from '../../state/appStores';
 import { useTheme } from '../../theme';
+import { AnalyzingOverlay, FoodResultSheet, SavedMealsSheet, TextFoodInputSheet, type FoodResultSave } from './FoodAISheets';
 import { AddMenuSheet, FastingStartSheet, ManualEntrySheet, WaterCustomSheet, type AddMenuAction } from './HomeSheets';
 
-type Sheet = 'add' | 'waterCustom' | 'fastingStart' | 'manualEntry' | null;
+type Sheet = 'add' | 'waterCustom' | 'fastingStart' | 'manualEntry' | 'describeMeal' | 'voiceMeal' | 'savedMeals' | 'review' | null;
+
+interface PendingAnalysis {
+  kind: FoodAnalysisKind;
+  imageUri?: string;
+}
+
+interface ReviewState {
+  kind: FoodAnalysisKind;
+  analysis: FoodAnalysis;
+  imageUri?: string;
+}
 
 /**
  * Home: week strip, calorie dome, nutrient bars, unified diary and the "+" menu. Every number
@@ -46,6 +63,9 @@ export function HomeScreen() {
   // Bumped every time a draft sheet opens so it remounts with empty fields (no stale drafts).
   const [sheetEpoch, setSheetEpoch] = useState(0);
   const [now, setNow] = useState(() => new Date());
+  const [pending, setPending] = useState<PendingAnalysis | null>(null);
+  const [review, setReview] = useState<ReviewState | null>(null);
+  const analysisAbort = useRef<AbortController | null>(null);
 
   const diary = useDiary((state) => state);
   const profile = useProfile((state) => state);
@@ -128,6 +148,82 @@ export function HomeScreen() {
       { text: 'Cancel Fast', style: 'destructive', onPress: () => diaryStore.dispatch({ type: 'fasting/cancelActive' }) },
     ]);
 
+  // MARK: - AI food logging
+
+  /** Runs one analysis; the overlay's Cancel aborts the request and the transport enforces a timeout. */
+  const runAnalysis = useCallback(
+    async (kind: FoodAnalysisKind, input: { text?: string; imageBase64?: string; imageUri?: string }) => {
+      analysisAbort.current?.abort();
+      const controller = new AbortController();
+      analysisAbort.current = controller;
+      setPending({ kind, ...(input.imageUri ? { imageUri: input.imageUri } : {}) });
+      try {
+        const analysis = await analyzeFood(
+          {
+            kind,
+            ...(input.text ? { text: input.text } : {}),
+            ...(input.imageBase64 ? { imagesBase64: [input.imageBase64] } : {}),
+          },
+          controller.signal,
+        );
+        if (controller.signal.aborted) return;
+        setReview({ kind, analysis, ...(input.imageUri ? { imageUri: input.imageUri } : {}) });
+        setSheet('review');
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        Alert.alert('Analysis failed', aiErrorMessage(error));
+      } finally {
+        if (analysisAbort.current === controller) {
+          analysisAbort.current = null;
+          setPending(null);
+        }
+      }
+    },
+    [],
+  );
+
+  const cancelAnalysis = () => {
+    analysisAbort.current?.abort();
+    analysisAbort.current = null;
+    setPending(null);
+  };
+
+  useEffect(() => () => analysisAbort.current?.abort(), []);
+
+  const captureAndAnalyze = async (kind: 'photo' | 'nutritionLabel', source: ImageSource) => {
+    try {
+      const picked = await pickImage(source);
+      if (!picked) return;
+      void runAnalysis(kind, { imageBase64: picked.base64, imageUri: picked.uri });
+    } catch (error) {
+      Alert.alert(kind === 'photo' ? 'Scan Food' : 'Scan Label', error instanceof ImagePermissionError ? error.message : 'Could not load that photo.');
+    }
+  };
+
+  const chooseImageSource = (kind: 'photo' | 'nutritionLabel') =>
+    Alert.alert(kind === 'photo' ? 'Scan Food' : 'Scan Nutrition Label', undefined, [
+      { text: 'Take Photo', onPress: () => void captureAndAnalyze(kind, 'camera') },
+      { text: 'Choose from Library', onPress: () => void captureAndAnalyze(kind, 'library') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+
+  const saveReview = (result: FoodResultSave) => {
+    if (!review) return;
+    const input = foodEntryInputFromAnalysis(result.analysis, review.kind, logDate().toISOString(), {
+      ...(result.mealType ? { mealType: result.mealType } : {}),
+      ...(result.customNote ? { customNote: result.customNote } : {}),
+    });
+    diaryStore.dispatch({ type: 'food/add', entry: makeFoodEntry(input, newId()) });
+    setReview(null);
+    setSheet(null);
+  };
+
+  const relogEntry = (entry: FoodEntry) => {
+    const { id: _id, timestamp: _timestamp, imageFilename: _image, additionalImageFilenames: _images, ...rest } = entry;
+    diaryStore.dispatch({ type: 'food/add', entry: makeFoodEntry({ ...rest, timestamp: logDate().toISOString() }, newId()) });
+    setSheet(null);
+  };
+
   const handleAddMenu = (action: AddMenuAction) => {
     switch (action.kind) {
       case 'startFast':
@@ -146,10 +242,27 @@ export function HomeScreen() {
         openSheet('waterCustom');
         return;
       case 'food':
-        if (action.method === 'manual') {
-          openSheet('manualEntry');
-        } else {
-          Alert.alert('Coming next', 'AI food logging is being ported to the shared app. Use Manual Entry for now.');
+        switch (action.method) {
+          case 'manual':
+            openSheet('manualEntry');
+            return;
+          case 'camera':
+            chooseImageSource('photo');
+            return;
+          case 'label':
+            chooseImageSource('nutritionLabel');
+            return;
+          case 'text':
+            openSheet('describeMeal');
+            return;
+          case 'voice':
+            openSheet('voiceMeal');
+            return;
+          case 'saved':
+            openSheet('savedMeals');
+            return;
+          case 'barcode':
+            Alert.alert('Scan Barcode', 'Barcode lookup (Open Food Facts) stays in the native apps for now. Use Scan Food or Describe Meal.');
         }
     }
   };
@@ -351,6 +464,40 @@ export function HomeScreen() {
           diaryStore.dispatch({ type: 'food/add', entry: makeFoodEntry(input, newId()) });
           setSheet(null);
         }}
+      />
+      <TextFoodInputSheet
+        key={`text-${sheetEpoch}`}
+        visible={sheet === 'describeMeal' || sheet === 'voiceMeal'}
+        voice={sheet === 'voiceMeal'}
+        onDismiss={() => setSheet(null)}
+        onSubmit={(description) => {
+          const kind: FoodAnalysisKind = sheet === 'voiceMeal' ? 'voice' : 'text';
+          setSheet(null);
+          void runAnalysis(kind, { text: description });
+        }}
+      />
+      <SavedMealsSheet
+        visible={sheet === 'savedMeals'}
+        favorites={favoriteEntries(diary)}
+        recents={recentEntries(diary)}
+        onDismiss={() => setSheet(null)}
+        onRelog={relogEntry}
+      />
+      <AnalyzingOverlay
+        visible={pending !== null}
+        imageUri={pending?.imageUri}
+        message={pending?.kind === 'text' || pending?.kind === 'voice' ? 'Looking up nutrition...' : 'Analyzing your food...'}
+        onCancel={cancelAnalysis}
+      />
+      <FoodResultSheet
+        visible={sheet === 'review' && review !== null}
+        analysis={review?.analysis}
+        imageUri={review?.imageUri}
+        onDismiss={() => {
+          setReview(null);
+          setSheet(null);
+        }}
+        onSave={saveReview}
       />
     </Screen>
   );

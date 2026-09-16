@@ -97,6 +97,7 @@ export function AddMenuSheet({ visible, onDismiss, onAction, fastingTrackingEnab
       {!hasActiveFast ? (
         <MenuGroup>
           <MenuRow icon="camera" title="Scan Food" subtitle="Photo of your meal" onPress={() => act({ kind: 'food', method: 'camera' })} />
+          <MenuRow icon="doc.text.viewfinder" title="Scan Label" subtitle="Nutrition facts" onPress={() => act({ kind: 'food', method: 'label' })} />
           <MenuRow icon="barcode" title="Scan Barcode" onPress={() => act({ kind: 'food', method: 'barcode' })} />
           <MenuRow icon="text.bubble" title="Describe Meal" onPress={() => act({ kind: 'food', method: 'text' })} />
           <MenuRow icon="mic" title="Voice" onPress={() => act({ kind: 'food', method: 'voice' })} />
