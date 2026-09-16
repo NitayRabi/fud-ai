@@ -40,8 +40,8 @@ import {
 } from '../../domain/progress/progress';
 import { weeklyChallengeScore, weeklyChallengeWeek } from '../../domain/progress/weeklyChallenge';
 import { dailyTargets } from '../../domain/profile/userProfile';
-import { burnSessions, dailyBurn, durationMinutes, performedSetCount } from '../../domain/workouts/workoutSessions';
-import { bodyStore, newId, setPreferences, useBody, useDiary, usePreferences, useProfile, useWorkouts, workoutsStore } from '../../state/appStores';
+import { burnSessions, dailyBurn, durationMinutes, performedSetCount, totalBurn } from '../../domain/workouts/workoutSessions';
+import { addWeighIn, bodyStore, deleteWeighIn, newId, setPreferences, useBody, useDiary, usePreferences, useProfile, useWorkouts, workoutsStore } from '../../state/appStores';
 import { useTheme } from '../../theme';
 import { BodyFatHistorySheet, LogBodyFatSheet, LogWeightSheet, WeightHistorySheet } from './ProgressSheets';
 
@@ -148,7 +148,7 @@ export function ProgressScreen() {
           ) : null}
 
           {metric === 'workouts' ? (
-            <ProgressCard title="Workout Burn" trailing={<AppText variant="subheadline" tone="secondary" weight="500">{`${burnInRange.reduce((s, w) => s + (w.caloriesBurned ?? 0), 0).toLocaleString()} kcal`}</AppText>}>
+            <ProgressCard title="Workout Burn" trailing={<AppText variant="subheadline" tone="secondary" weight="500">{`${totalBurn(burnInRange).toLocaleString()} kcal`}</AppText>}>
               {burnInRange.length === 0 ? (
                 <EmptyChart text="No workouts with a calorie estimate in this range" />
               ) : (
@@ -246,7 +246,8 @@ export function ProgressScreen() {
         onChangeUnit={(weightUnit) => setPreferences({ weightUnit })}
         onDismiss={() => setSheet(null)}
         onSave={(weightKg) => {
-          bodyStore.dispatch({ type: 'weight/add', entry: { id: newId(), date: new Date().toISOString(), weightKg } });
+          // Also moves `profile.weightKg`, like `WeightStore.addEntry`, so targets and Coach follow the scale.
+          addWeighIn({ id: newId(), date: new Date().toISOString(), weightKg });
           if (profile.goalWeightKg !== undefined && profile.goal !== 'maintain') {
             const reached = profile.goal === 'lose' ? weightKg <= profile.goalWeightKg : weightKg >= profile.goalWeightKg;
             if (reached) {
@@ -275,7 +276,7 @@ export function ProgressScreen() {
         entries={body.weightEntries}
         useMetric={useMetric}
         onDismiss={() => setSheet(null)}
-        onDelete={(entry) => bodyStore.dispatch({ type: 'weight/delete', id: entry.id })}
+        onDelete={(entry) => deleteWeighIn(entry.id)}
       />
       <BodyFatHistorySheet
         visible={sheet === 'bodyFatHistory'}

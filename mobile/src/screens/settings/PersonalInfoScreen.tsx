@@ -12,7 +12,7 @@ import { PickerSheet } from '../../components/PickerSheet';
 import { PrimaryButton, Row, AppText } from '../../components/primitives';
 import { SettingsRow, SettingsSection } from '../../components/SettingsRow';
 import { StepperField } from '../../components/StepperField';
-import { bodyStore, newId, profileStore, setPreferences, usePreferences, useProfile } from '../../state/appStores';
+import { addWeighIn, newId, profileStore, setPreferences, usePreferences, useProfile } from '../../state/appStores';
 import { displayWeight, formatWeight, isValidWeightKg, weightKgFromDisplay } from '../../domain/body/bodyState';
 import { activityLevelDisplayName, activityLevels, ageYears, genderDisplayName, genders, type ActivityLevel, type Gender } from '../../domain/profile/userProfile';
 import { useTheme } from '../../theme';
@@ -33,6 +33,10 @@ export function PersonalInfoScreen() {
   const [draft, setDraft] = useState('');
   const heightMetric = prefs.heightUnit === 'cm';
   const weightMetric = prefs.weightUnit === 'kg';
+  // Same bounds the stepper advertises; typed values are validated against them on Save too.
+  const heightLimits = heightMetric ? { min: 100, max: 250 } : { min: 39, max: 98 };
+  const heightDraft = Number.parseInt(draft, 10);
+  const heightInvalid = sheet === 'height' && (!Number.isFinite(heightDraft) || heightDraft < heightLimits.min || heightDraft > heightLimits.max);
 
   const update = (patch: Partial<typeof profile>) => profileStore.dispatch({ type: 'update', patch });
 
@@ -99,7 +103,7 @@ export function PersonalInfoScreen() {
       />
 
       <BottomSheet visible={sheet === 'height'} title="Height" onDismiss={() => setSheet(null)}>
-        <StepperField value={draft} onChange={setDraft} step={1} unit={heightMetric ? 'cm' : 'in'} fractionDigits={0} integerOnly min={heightMetric ? 100 : 39} max={heightMetric ? 250 : 98} accessibilityLabel="Height" />
+        <StepperField value={draft} onChange={setDraft} step={1} unit={heightMetric ? 'cm' : 'in'} fractionDigits={0} integerOnly min={heightLimits.min} max={heightLimits.max} accessibilityLabel="Height" />
         {!heightMetric ? (
           <Row style={{ justifyContent: 'center' }}>
             <AppText variant="caption" tone="secondary">
@@ -107,11 +111,18 @@ export function PersonalInfoScreen() {
             </AppText>
           </Row>
         ) : null}
+        {heightInvalid ? (
+          <AppText variant="caption" tone="destructive" align="center">
+            Enter a height between {heightLimits.min} and {heightLimits.max} {heightMetric ? 'cm' : 'in'}.
+          </AppText>
+        ) : null}
         <PrimaryButton
           title="Save"
+          disabled={heightInvalid}
           onPress={() => {
             const n = Number.parseInt(draft, 10);
-            if (Number.isFinite(n) && n > 0) update({ heightCm: heightMetric ? n : n * 2.54 });
+            if (!Number.isFinite(n) || n < heightLimits.min || n > heightLimits.max) return;
+            update({ heightCm: heightMetric ? n : n * 2.54 });
             setSheet(null);
           }}
         />
@@ -125,7 +136,8 @@ export function PersonalInfoScreen() {
             const kg = weightKgFromDisplay(n, weightMetric);
             if (isValidWeightKg(kg)) {
               update({ weightKg: kg });
-              bodyStore.dispatch({ type: 'weight/add', entry: { id: newId(), date: new Date().toISOString(), weightKg: kg } });
+              // Saving an unchanged weight must not pollute the history with a duplicate weigh-in.
+              if (Math.abs(kg - profile.weightKg) > 0.01) addWeighIn({ id: newId(), date: new Date().toISOString(), weightKg: kg });
             }
             setSheet(null);
           }}

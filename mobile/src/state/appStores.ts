@@ -6,7 +6,7 @@
 import { randomUUID } from 'expo-crypto';
 import { useSyncExternalStore } from 'react';
 
-import { bodyReducer, initialBodyState, type BodyAction, type BodyState } from '../domain/body/bodyState';
+import { bodyReducer, initialBodyState, latestWeight, type BodyAction, type BodyState, type WeightEntry } from '../domain/body/bodyState';
 import { chatReducer, COACH_CHAT_STORAGE_KEY, initialChatState, type ChatAction, type ChatMessage, type ChatState } from '../domain/coach/coach';
 import { diaryReducer, initialDiaryState, type DiaryAction, type DiaryState } from '../domain/diary/diaryState';
 import { defaultPreferences, mergePreferences, type Preferences } from '../domain/prefs/preferences';
@@ -88,6 +88,32 @@ function profileReducer(state: UserProfile, action: ProfileAction): UserProfile 
 }
 
 export const profileStore: Store<UserProfile, ProfileAction> = createStore(profileReducer, defaultUserProfile);
+
+// MARK: - Weigh-ins (body history + profile stay aligned)
+
+/**
+ * `WeightStore.addEntry` / `deleteEntry` + `syncProfileWeightToLatest`: every weigh-in goes
+ * through here so `UserProfile.weightKg` (BMR / TDEE / targets / Coach) always matches the
+ * newest entry Progress shows. An empty history leaves the profile alone — the formulas
+ * still need some weight.
+ */
+export function addWeighIn(entry: WeightEntry): void {
+  bodyStore.dispatch({ type: 'weight/add', entry });
+  syncProfileWeightToLatest();
+}
+
+export function deleteWeighIn(id: string): void {
+  bodyStore.dispatch({ type: 'weight/delete', id });
+  syncProfileWeightToLatest();
+}
+
+function syncProfileWeightToLatest(): void {
+  const newest = latestWeight(bodyStore.getState());
+  if (!newest) return;
+  if (Math.abs(profileStore.getState().weightKg - newest.weightKg) > 0.01) {
+    profileStore.dispatch({ type: 'update', patch: { weightKg: newest.weightKg } });
+  }
+}
 
 // MARK: - Purchases (RevenueCat)
 

@@ -263,15 +263,23 @@ export interface WorkoutBurnDay {
   calories: number;
 }
 
-/** One estimate per diary day; duplicates keep the newest record rather than summing. */
+/**
+ * Reliable burn per diary day. The shared log keeps every finished session (the native burn
+ * calculator upserts a single record per day instead), so a day with two workouts sums both —
+ * the same total the Workout Burn card shows for the range.
+ */
 export function dailyBurn(sessions: readonly WorkoutSession[]): WorkoutBurnDay[] {
-  const byDay = new Map<string, WorkoutSession>();
+  const byDay = new Map<string, number>();
   for (const session of sessions) {
     if (!isReliableBurn(session.caloriesBurned)) continue;
-    const existing = byDay.get(session.diaryDateKey);
-    if (!existing || existing.completedAt < session.completedAt) byDay.set(session.diaryDateKey, session);
+    byDay.set(session.diaryDateKey, (byDay.get(session.diaryDateKey) ?? 0) + session.caloriesBurned);
   }
-  return [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, session]) => ({ day, calories: session.caloriesBurned ?? 0 }));
+  return [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, calories]) => ({ day, calories }));
+}
+
+/** Range total for the Workout Burn card — derived from the same per-day series as the bars. */
+export function totalBurn(sessions: readonly WorkoutSession[]): number {
+  return dailyBurn(sessions).reduce((sum, day) => sum + day.calories, 0);
 }
 
 export interface LiftDay {

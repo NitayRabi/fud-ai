@@ -19,6 +19,7 @@ import {
   initialWorkoutsState,
   isReliableBurn,
   liftHistory,
+  totalBurn,
   workoutsReducer,
   type CompletedExercise,
   type WorkoutDraft,
@@ -130,11 +131,14 @@ describe('workout sessions', () => {
 
     const older = { ...session, id: 'older', diaryDateKey: '2026-09-14', completedAt: new Date(2026, 8, 14, 18).toISOString(), caloriesBurned: 150 };
     const dupe = { ...session, id: 'dupe', completedAt: new Date(2026, 8, 16, 19).toISOString(), caloriesBurned: 999 };
-    state = workoutsReducer(state, { type: 'hydrate', state: { sessions: [...state.sessions, older, dupe] } });
+    const unreliable = { ...session, id: 'unreliable', exercises: [], completedAt: new Date(2026, 8, 16, 20).toISOString(), caloriesBurned: 0 };
+    state = workoutsReducer(state, { type: 'hydrate', state: { sessions: [...state.sessions, older, dupe, unreliable] } });
+    // Two workouts on one day add up (and match the card total); a 0 kcal record is not reliable.
     expect(dailyBurn(state.sessions)).toEqual([
       { day: '2026-09-14', calories: 150 },
-      { day: day, calories: 999 },
+      { day: day, calories: 999 + session.caloriesBurned! },
     ]);
+    expect(totalBurn(state.sessions)).toBe(150 + 999 + session.caloriesBurned!);
 
     const history = liftHistory(state.sessions, 'Barbell_Bench_Press_-_Medium_Grip');
     expect(history[0]?.day).toBe(day);
