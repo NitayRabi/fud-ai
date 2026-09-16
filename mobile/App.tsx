@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { AISetupScreen } from './src/screens/onboarding/AISetupScreen';
+import { HostedPaywallSheet } from './src/screens/paywall/HostedPaywallSheet';
 import { hydrateAndPersistStores, setPreferences, usePreferences } from './src/state/appStores';
 import { appThemeColor, ThemeProvider, useTheme } from './src/theme';
 
@@ -16,12 +17,25 @@ export default function App() {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    let disposed = false;
     let dispose: (() => void) | undefined;
-    void hydrateAndPersistStores().then((cleanup) => {
-      dispose = cleanup;
-      setHydrated(true);
-    });
-    return () => dispose?.();
+    hydrateAndPersistStores()
+      .then((cleanup) => {
+        if (disposed) cleanup();
+        else dispose = cleanup;
+      })
+      .catch((error: unknown) => {
+        // Storage failures are already reported per store; whatever happened, the app must
+        // start with defaults rather than sit on the spinner.
+        console.error('[fudai] hydration failed; starting with defaults', error);
+      })
+      .finally(() => {
+        if (!disposed) setHydrated(true);
+      });
+    return () => {
+      disposed = true;
+      dispose?.();
+    };
   }, []);
 
   const appearanceMode = usePreferences((p) => p.appearanceMode);
@@ -39,6 +53,7 @@ export default function App() {
 function Root({ hydrated }: { hydrated: boolean }) {
   const theme = useTheme();
   const hasCompletedOnboarding = usePreferences((p) => p.hasCompletedOnboarding);
+  const [paywallVisible, setPaywallVisible] = useState(false);
 
   return (
     <>
@@ -50,7 +65,10 @@ function Root({ hydrated }: { hydrated: boolean }) {
       ) : hasCompletedOnboarding ? (
         <RootNavigator />
       ) : (
-        <AISetupScreen onContinue={() => setPreferences({ hasCompletedOnboarding: true })} />
+        <>
+          <AISetupScreen onContinue={() => setPreferences({ hasCompletedOnboarding: true })} onShowPaywall={() => setPaywallVisible(true)} />
+          <HostedPaywallSheet visible={paywallVisible} onDismiss={() => setPaywallVisible(false)} />
+        </>
       )}
     </>
   );

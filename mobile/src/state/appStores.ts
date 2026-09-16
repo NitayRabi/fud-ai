@@ -13,6 +13,7 @@ import {
   applyCustomerInfo,
   initialPurchasesState,
   noopPurchases,
+  type PackageLike,
   type PurchasesAdapter,
   type PurchasesState,
 } from '../domain/purchases/revenueCat';
@@ -120,6 +121,30 @@ export async function loadOfferings(): Promise<void> {
   }
 }
 
+/** `RevenueCatManager.purchase(package:)`: resolves to whether an entitlement is now active. */
+export async function purchasePackage(pkg: PackageLike): Promise<boolean> {
+  try {
+    const info = await purchasesAdapter.purchasePackage(pkg);
+    purchasesStore.dispatch({ type: 'customerInfo', info });
+    return purchasesStore.getState().hasHostedEntitlement;
+  } catch (error) {
+    purchasesStore.dispatch({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+    return false;
+  }
+}
+
+/** `RevenueCatManager.restorePurchases()`: asks the store to re-sync, not just re-read the cache. */
+export async function restorePurchases(): Promise<boolean> {
+  try {
+    const info = await purchasesAdapter.restorePurchases();
+    purchasesStore.dispatch({ type: 'customerInfo', info });
+    return purchasesStore.getState().hasHostedEntitlement;
+  } catch (error) {
+    purchasesStore.dispatch({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+    return false;
+  }
+}
+
 // MARK: - React binding
 
 export function useStoreSelector<S, A, T>(store: Store<S, A>, selector: (state: S) => T): T {
@@ -155,31 +180,77 @@ interface PersistedDiary {
   favoriteKeys: DiaryState['favoriteKeys'];
 }
 
+export type PersistenceFailure = { phase: 'read' | 'write'; key: string; error: unknown };
+export type PersistenceFailureListener = (failure: PersistenceFailure) => void;
+
+const persistenceFailureListeners = new Set<PersistenceFailureListener>();
+const reportedPersistenceFailures = new Set<string>();
+
+/** Subscribe to storage failures (for a banner / diagnostics). Returns an unsubscribe. */
+export function onPersistenceFailure(listener: PersistenceFailureListener): () => void {
+  persistenceFailureListeners.add(listener);
+  return () => {
+    persistenceFailureListeners.delete(listener);
+  };
+}
+
+/** Storage failures are never swallowed: logged once per key+phase and fanned out to listeners. */
+function reportPersistenceFailure(failure: PersistenceFailure): void {
+  const signature = `${failure.phase}:${failure.key}`;
+  if (!reportedPersistenceFailures.has(signature)) {
+    reportedPersistenceFailures.add(signature);
+    console.error(`[fudai] storage ${failure.phase} failed for "${failure.key}"`, failure.error);
+  }
+  persistenceFailureListeners.forEach((listener) => listener(failure));
+}
+
+interface StoreRead<T> {
+  value: T | undefined;
+  /** False when the read rejected; that store is then kept in memory only so the blob on disk is never clobbered. */
+  readable: boolean;
+}
+
+async function readStore<T>(kv: KeyValueStore, key: string): Promise<StoreRead<T>> {
+  try {
+    return { value: await readJSON<T>(kv, key), readable: true };
+  } catch (error) {
+    reportPersistenceFailure({ phase: 'read', key, error });
+    return { value: undefined, readable: false };
+  }
+}
+
 /**
  * Load persisted state, then persist every subsequent change. Writes are coalesced per store
  * with a short debounce so rapid taps (three glasses of water) become one write.
+ *
+ * Never rejects for storage reasons: each store is read independently, a failed read falls
+ * back to defaults (and is not persisted, so the unreadable blob survives for recovery), and
+ * every failure goes through `reportPersistenceFailure`.
  */
 export async function hydrateAndPersistStores(kv: KeyValueStore = asyncKeyValueStore): Promise<() => void> {
   const [diary, preferences, profile] = await Promise.all([
-    readJSON<PersistedDiary>(kv, storageKeys.diary),
-    readJSON<Partial<Preferences>>(kv, storageKeys.preferences),
-    readJSON<UserProfile>(kv, storageKeys.profile),
+    readStore<PersistedDiary>(kv, storageKeys.diary),
+    readStore<Partial<Preferences>>(kv, storageKeys.preferences),
+    readStore<UserProfile>(kv, storageKeys.profile),
   ]);
 
-  if (diary) diaryStore.dispatch({ type: 'hydrate', state: diary });
-  preferencesStore.dispatch({ type: 'hydrate', preferences: mergePreferences(preferences) });
-  if (profile) profileStore.dispatch({ type: 'hydrate', profile: { ...defaultUserProfile, ...profile } });
+  if (diary.value) diaryStore.dispatch({ type: 'hydrate', state: diary.value });
+  preferencesStore.dispatch({ type: 'hydrate', preferences: mergePreferences(preferences.value) });
+  if (profile.value) profileStore.dispatch({ type: 'hydrate', profile: { ...defaultUserProfile, ...profile.value } });
 
-  const unsubscribes = [
-    persistOnChange(diaryStore, kv, storageKeys.diary, (state): PersistedDiary => ({
-      foodEntries: state.foodEntries,
-      waterEntries: state.waterEntries,
-      fastingSessions: state.fastingSessions,
-      favoriteKeys: state.favoriteKeys,
-    })),
-    persistOnChange(preferencesStore, kv, storageKeys.preferences, (state) => state),
-    persistOnChange(profileStore, kv, storageKeys.profile, (state) => state),
-  ];
+  const unsubscribes: (() => void)[] = [];
+  if (diary.readable) {
+    unsubscribes.push(
+      persistOnChange(diaryStore, kv, storageKeys.diary, (state): PersistedDiary => ({
+        foodEntries: state.foodEntries,
+        waterEntries: state.waterEntries,
+        fastingSessions: state.fastingSessions,
+        favoriteKeys: state.favoriteKeys,
+      })),
+    );
+  }
+  if (preferences.readable) unsubscribes.push(persistOnChange(preferencesStore, kv, storageKeys.preferences, (state) => state));
+  if (profile.readable) unsubscribes.push(persistOnChange(profileStore, kv, storageKeys.profile, (state) => state));
 
   return () => unsubscribes.forEach((fn) => fn());
 }
@@ -192,17 +263,33 @@ function persistOnChange<S, A>(
   debounceMs = 150,
 ): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  // Set when the last write rejected; the next change (or the dispose flush) rewrites the full
+  // snapshot, so a transient failure only delays persistence instead of dropping it.
+  let pendingRetry = false;
+
+  const flush = (state: S): Promise<void> =>
+    writeJSON(kv, key, project(state)).then(
+      () => {
+        pendingRetry = false;
+      },
+      (error: unknown) => {
+        pendingRetry = true;
+        reportPersistenceFailure({ phase: 'write', key, error });
+      },
+    );
+
   const unsubscribe = store.subscribe((state) => {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = undefined;
-      void writeJSON(kv, key, project(state));
+      void flush(state);
     }, debounceMs);
   });
   return () => {
-    if (timer) {
-      clearTimeout(timer);
-      void writeJSON(kv, key, project(store.getState()));
+    if (timer || pendingRetry) {
+      if (timer) clearTimeout(timer);
+      timer = undefined;
+      void flush(store.getState());
     }
     unsubscribe();
   };
