@@ -7,7 +7,7 @@
  */
 
 import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
-import { useContext, useMemo, useRef, useState } from 'react';
+import { useContext, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -262,28 +262,14 @@ function WorkoutLog({ dayKey: today, onAddExercise, bottomInset }: { dayKey: str
 
 function SessionRow({ session, onInspect }: { session: WorkoutSession; onInspect: () => void }) {
   const theme = useTheme();
-  // Long-press delete confirm also fires onPress on some platforms; suppress the next press.
-  const suppressPress = useRef(false);
-  const remove = () => {
-    suppressPress.current = true;
+  // Pressable already suppresses onPress after a recognized long press — no extra flag.
+  const remove = () =>
     Alert.alert('Delete workout?', undefined, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => workoutsStore.dispatch({ type: 'session/delete', id: session.id }) },
     ]);
-  };
   return (
-    <Pressable
-      accessibilityRole="button"
-      delayLongPress={280}
-      onLongPress={remove}
-      onPress={() => {
-        if (suppressPress.current) {
-          suppressPress.current = false;
-          return;
-        }
-        onInspect();
-      }}
-    >
+    <Pressable accessibilityRole="button" delayLongPress={280} onLongPress={remove} onPress={onInspect}>
       <Row style={{ paddingHorizontal: theme.spacing.lg, paddingVertical: 12, gap: 12 }}>
         <View style={{ flex: 1, gap: 2 }}>
           <AppText variant="body" weight="500">
