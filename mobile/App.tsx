@@ -30,10 +30,12 @@ export default function App() {
         // start with defaults rather than sit on the spinner.
         console.error('[fudai] hydration failed; starting with defaults', error);
       });
-    // Store wiring is independent of hydration (it only needs the RevenueCat key), so it runs
-    // even when hydration rejected; without a key or native module the paywall says so.
-    const purchases = hydration.then(() => installPurchasesAdapter()).catch((error: unknown) => console.warn('[fudai] purchases adapter unavailable', error));
-    void purchases.finally(() => {
+    // Purchases only needs the RevenueCat key / native module — run even if hydration rejected.
+    // Do not chain off hydration.then(success); that skips install on rejection.
+    const purchases = installPurchasesAdapter().catch((error: unknown) =>
+      console.warn('[fudai] purchases adapter unavailable', error),
+    );
+    void Promise.all([hydration, purchases]).finally(() => {
       if (!disposed) setHydrated(true);
     });
     return () => {
