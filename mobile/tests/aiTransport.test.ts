@@ -12,6 +12,7 @@ import {
   buildOpenAICompatibleRequest,
   extractJSON,
   generateText,
+  isAllowedBaseURL,
   parseGeminiText,
   parseOpenAIText,
 } from '../src/domain/ai/transport';
@@ -146,6 +147,21 @@ describe('generateText', () => {
     controller.abort();
     await expect(pending).rejects.toMatchObject({ kind: 'cancelled' });
     expect(aiErrorMessage(new AIError('cancelled'))).toBe('Analysis cancelled.');
+  });
+
+  it('refuses to send a key over cleartext to anything but the local network', async () => {
+    expect(isAllowedBaseURL('https://api.openai.com/v1')).toBe(true);
+    expect(isAllowedBaseURL('http://localhost:11434/v1')).toBe(true);
+    expect(isAllowedBaseURL('http://192.168.1.20:1234/v1')).toBe(true);
+    expect(isAllowedBaseURL('http://10.0.0.5/v1')).toBe(true);
+    expect(isAllowedBaseURL('http://studio.local:1234/v1')).toBe(true);
+    expect(isAllowedBaseURL('http://api.example.com/v1')).toBe(false);
+    expect(isAllowedBaseURL('ftp://api.example.com/v1')).toBe(false);
+    expect(isAllowedBaseURL('not a url')).toBe(false);
+
+    const fetchImpl = fakeFetch(() => jsonResponse({}));
+    const insecure = requestConfig({ provider: aiProviders.openai, model: 'gpt-5.4-mini' }, 'http://api.example.com/v1', 'sk-test');
+    await expect(generateText(insecure, { prompt: 'p' }, { timeoutMs: 5000, fetchImpl })).rejects.toMatchObject({ kind: 'invalidURL' });
   });
 
   it('maps HTTP errors to stable kinds without leaking the body', async () => {

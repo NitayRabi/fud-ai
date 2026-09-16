@@ -395,10 +395,33 @@ async function generateWithRetry(build: Builder, parse: Parser, request: AIGener
   return response.text;
 }
 
+const LOCAL_HOST_PATTERN = /^(localhost|127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|\[::1\]|[^.]+\.local)$/i;
+
+/**
+ * Cleartext is only ever allowed to the local network, which is what the native apps permit
+ * too (`NSAllowsLocalNetworking` on iOS; App Transport Security / Android's network security
+ * config refuse public `http://` anyway). Refusing it here means an API key can never leave
+ * the device unencrypted, and the user gets "Invalid API URL" instead of an opaque failure.
+ */
+export function isAllowedBaseURL(baseURL: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(baseURL);
+  } catch {
+    return false;
+  }
+  if (url.protocol === 'https:') return true;
+  if (url.protocol !== 'http:') return false;
+  return LOCAL_HOST_PATTERN.test(url.hostname);
+}
+
 /** `GeminiService.dispatch` — route by API format. On-device runtimes are native-only for now. */
 export async function generateText(config: RequestConfig, request: AIGenerateRequest, options: AIRequestOptions): Promise<string> {
   if (!config.baseURL) throw new AIError('invalidURL');
   const provider: AIProviderDefinition = config.provider;
+  if (provider.apiFormat !== 'onDevice' && provider.apiFormat !== 'liteRTLocal' && !isAllowedBaseURL(config.baseURL)) {
+    throw new AIError('invalidURL', 'Custom endpoints must use https:// (plain http:// is only allowed on your local network). Check your provider settings.');
+  }
   switch (provider.apiFormat) {
     case 'onDevice':
       if ((request.imagesBase64?.length ?? 0) > 0) throw new AIError('textOnly');
