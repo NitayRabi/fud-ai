@@ -4,7 +4,7 @@ import UIKit
 /// A container whose background is native glass. React children are laid out on top of the
 /// effect view, so the JS side controls content while UIKit owns the material.
 final class GlassChromeView: ExpoView {
-  private let effectView = UIVisualEffectView()
+  private let effectView = UIVisualEffectView(effect: nil)
 
   var tintHex: String? {
     didSet { applyEffect() }
@@ -40,7 +40,8 @@ final class GlassChromeView: ExpoView {
 
   private func applyEffect() {
     if #available(iOS 26.0, *) {
-      let glass = UIGlassEffect()
+      // Same construction as FoodResultView.swift in the native app.
+      let glass = UIGlassEffect(style: .regular)
       glass.isInteractive = isInteractive
       glass.tintColor = tintHex.flatMap(UIColor.init(hexString:))
       effectView.effect = glass
