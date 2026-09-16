@@ -1,9 +1,22 @@
-import React from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import {
+  Animated,
+  KeyboardAvoidingView,
+  Modal,
+  PanResponder,
+  Platform,
+  Pressable,
+  ScrollView,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '../theme';
 import { AppText, Row } from './primitives';
+
+export type BottomSheetDetent = 'auto' | 'medium' | 'large';
 
 interface BottomSheetProps {
   visible: boolean;
@@ -12,41 +25,107 @@ interface BottomSheetProps {
   children: React.ReactNode;
   /** Optional trailing action in the header (e.g. Done). */
   trailing?: React.ReactNode;
+  /**
+   * Sheet chrome: `card` matches elevated SwiftUI sheets; `background` matches Home forms that
+   * nest `appCard` groups inside (Add menu, manual entry).
+   */
+  surface?: 'card' | 'background';
+  /** Rough detent height — `auto` sizes to content up to 85%. */
+  detent?: BottomSheetDetent;
+  /** Extra style on the sheet panel (e.g. tighter padding for action lists). */
+  contentStyle?: StyleProp<ViewStyle>;
+  /** When false, children are not wrapped in a ScrollView (caller manages scroll). */
+  scrollable?: boolean;
 }
+
+const detentMaxHeight: Record<BottomSheetDetent, `${number}%` | undefined> = {
+  auto: '85%',
+  medium: '55%',
+  large: '92%',
+};
+
+const hairline = Platform.select({ ios: 0.33, android: 0.5, default: 0.5 }) ?? 0.5;
 
 /**
  * Card-style sheet anchored to the bottom, the same on both platforms. Stands in for SwiftUI
- * `.sheet` / `Menu` presentations until native sheets are bridged.
+ * `.sheet` / `Menu` / confirmation-dialog presentations until native sheets are bridged.
  */
-export function BottomSheet({ visible, title, onDismiss, children, trailing }: BottomSheetProps) {
+export function BottomSheet({
+  visible,
+  title,
+  onDismiss,
+  children,
+  trailing,
+  surface = 'background',
+  detent = 'auto',
+  contentStyle,
+  scrollable = true,
+}: BottomSheetProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const translateY = useRef(new Animated.Value(0)).current;
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+
+  useEffect(() => {
+    if (visible) translateY.setValue(0);
+  }, [visible, translateY]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) => gesture.dy > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+      onPanResponderMove: (_, gesture) => {
+        if (gesture.dy > 0) translateY.setValue(gesture.dy);
+      },
+      onPanResponderRelease: (_, gesture) => {
+        if (gesture.dy > 100 || gesture.vy > 0.9) {
+          Animated.timing(translateY, { toValue: 420, duration: 160, useNativeDriver: true }).start(() => {
+            translateY.setValue(0);
+            onDismissRef.current();
+          });
+          return;
+        }
+        Animated.spring(translateY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
+      },
+    }),
+  ).current;
+
+  const backgroundColor = surface === 'card' ? theme.colors.appCard : theme.colors.appBackground;
+  const body = scrollable ? (
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[{ padding: theme.spacing.lg, gap: theme.spacing.md }, contentStyle]}>
+      {children}
+    </ScrollView>
+  ) : (
+    <View style={[{ padding: theme.spacing.lg, gap: theme.spacing.md }, contentStyle]}>{children}</View>
+  );
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onDismiss} statusBarTranslucent>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'flex-end' }}>
         <Pressable accessibilityLabel="Dismiss" onPress={onDismiss} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.35)' }} />
-        <View
+        <Animated.View
           style={{
-            backgroundColor: theme.colors.appBackground,
+            backgroundColor,
             borderTopLeftRadius: theme.radii.cardLarge,
             borderTopRightRadius: theme.radii.cardLarge,
             paddingBottom: Math.max(insets.bottom, theme.spacing.lg),
-            maxHeight: '85%',
+            maxHeight: detentMaxHeight[detent],
+            transform: [{ translateY }],
+            borderTopWidth: hairline,
+            borderColor: theme.scheme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)',
           }}
         >
-          <View style={{ alignItems: 'center', paddingTop: 8 }}>
-            <View style={{ width: 36, height: 5, borderRadius: 3, backgroundColor: theme.colors.fill }} />
+          <View {...panResponder.panHandlers} style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 4 }}>
+            <View style={{ width: 36, height: 5, borderRadius: 3, backgroundColor: theme.colors.tertiaryLabel }} />
           </View>
           {title || trailing ? (
-            <Row style={{ paddingHorizontal: theme.spacing.lg, paddingTop: 12, paddingBottom: 4, justifyContent: 'space-between' }}>
+            <Row style={{ paddingHorizontal: theme.spacing.lg, paddingTop: 8, paddingBottom: 4, justifyContent: 'space-between' }}>
               <AppText variant="headline">{title ?? ''}</AppText>
               {trailing}
             </Row>
           ) : null}
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: theme.spacing.lg, gap: theme.spacing.md }}>
-            {children}
-          </ScrollView>
-        </View>
+          {body}
+        </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
   );
