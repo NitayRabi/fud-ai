@@ -128,3 +128,41 @@ describe('food range stats & streaks', () => {
     expect(loggingStats([food('y', -1, 100)], 2000, now).currentStreak).toBe(1);
   });
 });
+
+describe('weekly challenge score', () => {
+  it('counts Monday-based week days within goal bands and caps points at 28', async () => {
+    const { weeklyChallengeScore, weeklyChallengeWeek } = await import('../src/domain/progress/weeklyChallenge');
+    // 2026-09-16 is a Wednesday; the challenge week starts Monday 2026-09-14.
+    const wednesday = new Date(2026, 8, 16, 12);
+    expect(weeklyChallengeWeek(wednesday).key).toBe('2026-09-14');
+    const iso = (d: number, h = 9) => new Date(2026, 8, d, h).toISOString();
+    const score = weeklyChallengeScore({
+      now: wednesday,
+      foods: [
+        { date: iso(14), calories: 1900 },
+        { date: iso(15), calories: 1200 },
+        { date: iso(16), calories: 2100 },
+        { date: iso(13), calories: 2000 },
+        { date: iso(17), calories: 2000 },
+      ],
+      water: [
+        { date: iso(14), milliliters: 1500 },
+        { date: iso(14), milliliters: 600 },
+        { date: iso(15), milliliters: 500 },
+      ],
+      activities: [{ date: iso(15), calories: 2500 }, { date: iso(16) }],
+      calorieGoal: 2000,
+      hydrationEnabled: true,
+      hydrationGoalMilliliters: 2000,
+    });
+    expect(score).toEqual({
+      weekStart: '2026-09-14',
+      activityDays: 1,
+      nutritionDays: 2,
+      consistencyDays: 3,
+      hydrationDays: 1,
+      overallPoints: 7,
+      activityKcal: 2000,
+    });
+  });
+});
