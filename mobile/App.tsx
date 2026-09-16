@@ -20,21 +20,22 @@ export default function App() {
   useEffect(() => {
     let disposed = false;
     let dispose: (() => void) | undefined;
-    hydrateAndPersistStores()
+    const hydration = hydrateAndPersistStores()
       .then((cleanup) => {
         if (disposed) cleanup();
         else dispose = cleanup;
-        // Store wiring is best-effort: without a key or native module the paywall says so.
-        return installPurchasesAdapter().catch((error: unknown) => console.warn('[fudai] purchases adapter unavailable', error));
       })
       .catch((error: unknown) => {
         // Storage failures are already reported per store; whatever happened, the app must
         // start with defaults rather than sit on the spinner.
         console.error('[fudai] hydration failed; starting with defaults', error);
-      })
-      .finally(() => {
-        if (!disposed) setHydrated(true);
       });
+    // Store wiring is independent of hydration (it only needs the RevenueCat key), so it runs
+    // even when hydration rejected; without a key or native module the paywall says so.
+    const purchases = hydration.then(() => installPurchasesAdapter()).catch((error: unknown) => console.warn('[fudai] purchases adapter unavailable', error));
+    void purchases.finally(() => {
+      if (!disposed) setHydrated(true);
+    });
     return () => {
       disposed = true;
       dispose?.();
