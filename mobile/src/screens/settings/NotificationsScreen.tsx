@@ -37,6 +37,7 @@ export function NotificationsScreen() {
           setPreferences({ notificationsEnabled: false });
           return;
         }
+        // Rolls back on failure, so a rejection here leaves no reminders and the switch off.
         await scheduleMealReminders();
         setPreferences({ notificationsEnabled: true });
       } else {
@@ -44,6 +45,7 @@ export function NotificationsScreen() {
         setPreferences({ notificationsEnabled: false });
       }
     } catch (error) {
+      setPreferences({ notificationsEnabled: false });
       Alert.alert('Reminders', error instanceof Error ? error.message : 'Could not update meal reminders.');
     } finally {
       setBusy(false);

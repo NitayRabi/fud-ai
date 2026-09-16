@@ -628,10 +628,20 @@ function NotificationsStep({ onDecision }: { onDecision: (enabled: boolean) => v
   const allow = async () => {
     if (busy) return;
     setBusy(true);
-    const granted = await requestNotificationAuthorization();
-    if (granted) await scheduleMealReminders().catch((error: unknown) => console.warn('[fudai] scheduling meal reminders failed', error));
+    // "Enabled" means the reminders are actually on the OS schedule, not just that permission
+    // was granted; `scheduleMealReminders` rolls back on failure, so nothing is left half-set.
+    let enabled = await requestNotificationAuthorization();
+    if (enabled) {
+      try {
+        await scheduleMealReminders();
+      } catch (error) {
+        console.warn('[fudai] scheduling meal reminders failed', error);
+        enabled = false;
+        Alert.alert('Reminders unavailable', 'Meal reminders could not be scheduled right now. You can turn them on later in Settings → Notifications.');
+      }
+    }
     setBusy(false);
-    onDecision(granted);
+    onDecision(enabled);
   };
   return (
     <View style={{ flex: 1 }}>

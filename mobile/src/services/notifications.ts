@@ -23,8 +23,15 @@ export const defaultMealReminders: readonly MealReminder[] = [
 
 const MEAL_CHANNEL = 'meal-reminders';
 
+/** Android 13+ only shows the permission prompt once the app owns a notification channel. */
+async function ensureMealChannel(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  await Notifications.setNotificationChannelAsync(MEAL_CHANNEL, { name: 'Meal reminders', importance: Notifications.AndroidImportance.DEFAULT });
+}
+
 export async function requestNotificationAuthorization(): Promise<boolean> {
   try {
+    await ensureMealChannel();
     const current = await Notifications.getPermissionsAsync();
     if (current.granted) return true;
     if (!current.canAskAgain) return false;
@@ -36,22 +43,30 @@ export async function requestNotificationAuthorization(): Promise<boolean> {
   }
 }
 
+/**
+ * All-or-nothing: either every reminder is scheduled or none is. A failure part-way cancels
+ * what was already created before rejecting, so `notificationsEnabled` and the OS schedule
+ * never disagree.
+ */
 export async function scheduleMealReminders(reminders: readonly MealReminder[] = defaultMealReminders): Promise<void> {
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync(MEAL_CHANNEL, { name: 'Meal reminders', importance: Notifications.AndroidImportance.DEFAULT });
-  }
+  await ensureMealChannel();
   await cancelMealReminders();
-  for (const reminder of reminders) {
-    await Notifications.scheduleNotificationAsync({
-      identifier: reminder.id,
-      content: { title: reminder.title, body: reminder.body, sound: 'default' },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DAILY,
-        hour: reminder.hour,
-        minute: reminder.minute,
-        ...(Platform.OS === 'android' ? { channelId: MEAL_CHANNEL } : {}),
-      },
-    });
+  try {
+    for (const reminder of reminders) {
+      await Notifications.scheduleNotificationAsync({
+        identifier: reminder.id,
+        content: { title: reminder.title, body: reminder.body, sound: 'default' },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DAILY,
+          hour: reminder.hour,
+          minute: reminder.minute,
+          ...(Platform.OS === 'android' ? { channelId: MEAL_CHANNEL } : {}),
+        },
+      });
+    }
+  } catch (error) {
+    await cancelMealReminders();
+    throw error;
   }
 }
 
