@@ -172,11 +172,12 @@ describe('weekly challenge score', () => {
     });
     expect(score).toEqual({
       weekStart: '2026-09-14',
-      activityDays: 1,
+      // iso(16) has no calorie estimate but still earns the activity day.
+      activityDays: 2,
       nutritionDays: 2,
       consistencyDays: 3,
       hydrationDays: 1,
-      overallPoints: 7,
+      overallPoints: 8,
       activityKcal: 2000,
     });
   });
