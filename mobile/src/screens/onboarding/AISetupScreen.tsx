@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 
 import { Icon, type SFSymbolName } from '../../components/Icon';
@@ -25,7 +25,7 @@ const platform: MobilePlatform = Platform.OS === 'ios' ? 'ios' : 'android';
 
 interface AISetupScreenProps {
   onContinue: () => void;
-  /** Present the hosted paywall. The paywall itself is not yet ported. */
+  /** Present the hosted paywall (`HostedPaywallSheet`); continuing on Hosted needs an entitlement. */
   onShowPaywall?: () => void;
 }
 
@@ -47,6 +47,11 @@ export function AISetupScreen({ onContinue, onShowPaywall }: AISetupScreenProps)
   const [showKey, setShowKey] = useState(false);
   const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false);
   const [picker, setPicker] = useState<'provider' | 'model' | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | undefined>(undefined);
+  // Which fields the user has typed into since the current provider was selected. A saved
+  // value that arrives from storage later must not replace what they are typing.
+  const edited = useRef({ apiKey: false, baseURL: false });
 
   useEffect(() => {
     void refreshCustomerInfo();
@@ -56,20 +61,33 @@ export function AISetupScreen({ onContinue, onShowPaywall }: AISetupScreenProps)
   // Provider switch: restore any key/URL previously saved for it, reset the model to its default.
   useEffect(() => {
     let cancelled = false;
+    edited.current = { apiKey: false, baseURL: false };
     setModel(defaultModel(provider));
+    setApiKey('');
+    setBaseURL('');
+    setSaveError(undefined);
     void (async () => {
       const [savedKey, savedURL] = await Promise.all([
-        provider.requiresAPIKey ? secureSecretStore.get(apiKeySecretName(provider)) : Promise.resolve(null),
-        asyncKeyValueStore.get(customBaseURLKey(provider)),
+        provider.requiresAPIKey ? secureSecretStore.get(apiKeySecretName(provider)).catch(() => null) : Promise.resolve(null),
+        asyncKeyValueStore.get(customBaseURLKey(provider)).catch(() => null),
       ]);
       if (cancelled) return;
-      setApiKey(savedKey ?? '');
-      setBaseURL(savedURL ?? '');
+      if (savedKey && !edited.current.apiKey) setApiKey(savedKey);
+      if (savedURL && !edited.current.baseURL) setBaseURL(savedURL);
     })();
     return () => {
       cancelled = true;
     };
   }, [provider]);
+
+  const editApiKey = (value: string) => {
+    edited.current.apiKey = true;
+    setApiKey(value);
+  };
+  const editBaseURL = (value: string) => {
+    edited.current.baseURL = true;
+    setBaseURL(value);
+  };
 
   const validation = validateAISetup({
     substep,
@@ -93,17 +111,30 @@ export function AISetupScreen({ onContinue, onShowPaywall }: AISetupScreenProps)
   );
 
   const persistAndContinue = async () => {
+    if (isSaving) return;
     if (substep === 'hosted' && !purchases.hasHostedEntitlement) {
       onShowPaywall?.();
       return;
     }
-    if (substep === 'byok') {
-      const trimmedKey = apiKey.trim();
-      if (provider.requiresAPIKey && trimmedKey) await secureSecretStore.set(apiKeySecretName(provider), trimmedKey);
-      const trimmedURL = baseURL.trim();
-      if (trimmedURL) await asyncKeyValueStore.set(customBaseURLKey(provider), trimmedURL);
-      else await asyncKeyValueStore.remove(customBaseURLKey(provider));
+    setIsSaving(true);
+    setSaveError(undefined);
+    try {
+      if (substep === 'byok') {
+        const trimmedKey = apiKey.trim();
+        if (provider.requiresAPIKey && trimmedKey) await secureSecretStore.set(apiKeySecretName(provider), trimmedKey);
+        const trimmedURL = baseURL.trim();
+        if (trimmedURL) await asyncKeyValueStore.set(customBaseURLKey(provider), trimmedURL);
+        else await asyncKeyValueStore.remove(customBaseURLKey(provider));
+      }
+    } catch (error) {
+      console.error('[fudai] AI setup: saving provider settings failed', error);
+      const detail = error instanceof Error && error.message ? ` (${error.message})` : '';
+      setSaveError(`Couldn't save your ${provider.shortName} settings on this device${detail}. Please try again.`);
+      setIsSaving(false);
+      return;
     }
+    // Preferences are only committed once the key/URL are safely on disk, so a failed save
+    // never leaves BYOK selected without a stored key.
     setPreferences({
       aiAccessMode: substep === 'hosted' ? 'hosted' : 'byok',
       aiConsentGiven: true,
@@ -111,6 +142,7 @@ export function AISetupScreen({ onContinue, onShowPaywall }: AISetupScreenProps)
       selectedAIProvider: provider.rawValue,
       selectedAIModel: model.trim(),
     });
+    setIsSaving(false);
     onContinue();
   };
 
@@ -192,7 +224,7 @@ export function AISetupScreen({ onContinue, onShowPaywall }: AISetupScreenProps)
                     <Row style={{ flex: 1, gap: 8, justifyContent: 'flex-end' }}>
                       <TextInput
                         value={apiKey}
-                        onChangeText={setApiKey}
+                        onChangeText={editApiKey}
                         placeholder={apiKeyPlaceholder(provider)}
                         placeholderTextColor={theme.colors.placeholder}
                         secureTextEntry={!showKey}
@@ -221,7 +253,7 @@ export function AISetupScreen({ onContinue, onShowPaywall }: AISetupScreenProps)
                   <ConfigRow icon="link" label={provider.requiresCustomEndpoint ? 'Base URL' : 'Server URL'}>
                     <TextInput
                       value={baseURL}
-                      onChangeText={setBaseURL}
+                      onChangeText={editBaseURL}
                       placeholder={provider.requiresCustomEndpoint ? 'https://your-endpoint.com/v1' : provider.baseURL}
                       placeholderTextColor={theme.colors.placeholder}
                       autoCapitalize="none"
@@ -306,11 +338,15 @@ export function AISetupScreen({ onContinue, onShowPaywall }: AISetupScreenProps)
       {substep !== 'choice' ? (
         <View style={{ paddingHorizontal: theme.spacing.xl, paddingBottom: theme.spacing.xxl, gap: 10 }}>
           <PrimaryButton
-            title={aiSetupContinueLabel({ substep, hasHostedEntitlement: purchases.hasHostedEntitlement })}
-            disabled={!validation.canContinue}
+            title={isSaving ? 'Saving…' : aiSetupContinueLabel({ substep, hasHostedEntitlement: purchases.hasHostedEntitlement })}
+            disabled={!validation.canContinue || isSaving}
             onPress={() => void persistAndContinue()}
           />
-          {validation.helperText ? (
+          {saveError ? (
+            <AppText variant="footnote" tone="destructive" align="center" accessibilityLiveRegion="assertive">
+              {saveError}
+            </AppText>
+          ) : validation.helperText ? (
             <AppText variant="footnote" tone="secondary" align="center" accessibilityLiveRegion="polite">
               {validation.helperText}
             </AppText>
