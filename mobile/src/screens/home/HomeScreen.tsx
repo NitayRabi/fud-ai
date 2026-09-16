@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, View } from 'react-native';
+import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, AppState, Pressable, ScrollView, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '../../components/Icon';
 import { CalorieGauge } from '../../components/home/CalorieGauge';
@@ -7,7 +9,7 @@ import { FastingRow, FoodRow, WaterLogRow } from '../../components/home/DiaryRow
 import { MacroVerticalBar } from '../../components/home/MacroVerticalBar';
 import { WeekEnergyStrip } from '../../components/home/WeekEnergyStrip';
 import { AppText, Card, Divider, LinkButton, Row, Screen } from '../../components/primitives';
-import { isSameDay } from '../../domain/dates';
+import { addDays, dayKey, isSameDay, startOfDay } from '../../domain/dates';
 import {
   activeFast,
   caloriesOn,
@@ -36,8 +38,13 @@ type Sheet = 'add' | 'waterCustom' | 'fastingStart' | 'manualEntry' | null;
  */
 export function HomeScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  // Tab bar is absolutely positioned over the screen; its height already includes the bottom inset.
+  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? insets.bottom;
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [sheet, setSheet] = useState<Sheet>(null);
+  // Bumped every time a draft sheet opens so it remounts with empty fields (no stale drafts).
+  const [sheetEpoch, setSheetEpoch] = useState(0);
   const [now, setNow] = useState(() => new Date());
 
   const diary = useDiary((state) => state);
@@ -47,12 +54,42 @@ export function HomeScreen() {
   const isToday = isSameDay(selectedDate, now);
   const active = activeFast(diary);
 
-  // Tick once a minute while a fast is running so the elapsed read-out stays live.
+  // Keep `now` honest: refresh on foreground, at the next local midnight, and once a minute
+  // while a fast is running (live elapsed read-out). Without this, an app left open or resumed
+  // overnight would still call yesterday "Today's Diary" while logging into the new day.
   useEffect(() => {
-    if (!active) return;
-    const id = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(id);
+    const refresh = () => setNow(new Date());
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refresh();
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      const current = new Date();
+      const untilMidnight = startOfDay(addDays(current, 1)).getTime() - current.getTime() + 1_000;
+      timer = setTimeout(
+        () => {
+          refresh();
+          schedule();
+        },
+        active ? Math.min(60_000, untilMidnight) : untilMidnight,
+      );
+    };
+    schedule();
+    return () => {
+      subscription.remove();
+      if (timer) clearTimeout(timer);
+    };
   }, [active]);
+
+  // When the day rolls over while "today" is selected, follow it; an explicitly chosen past day stays.
+  const today = dayKey(now);
+  const previousToday = useRef(today);
+  useEffect(() => {
+    if (previousToday.current === today) return;
+    const wasToday = previousToday.current;
+    previousToday.current = today;
+    setSelectedDate((selected) => (dayKey(selected) === wasToday ? new Date() : selected));
+  }, [today]);
 
   const targets = useMemo(() => dailyTargets(profile), [profile]);
   const dayFood = useMemo(() => foodEntriesOn(diary, selectedDate), [diary, selectedDate]);
@@ -62,9 +99,14 @@ export function HomeScreen() {
     [diary, selectedDate, isToday, active],
   );
   const groups = useMemo(
-    () => homeDiaryMealGroups({ foodEntries: dayFood, waterEntries: dayWater, fastingSessions: dayFasts, order: prefs.foodLogSortOrder }),
-    [dayFood, dayWater, dayFasts, prefs.foodLogSortOrder],
+    () => homeDiaryMealGroups({ foodEntries: dayFood, waterEntries: dayWater, fastingSessions: dayFasts, order: prefs.foodLogSortOrder, now }),
+    [dayFood, dayWater, dayFasts, prefs.foodLogSortOrder, now],
   );
+
+  const openSheet = (next: Exclude<Sheet, null>) => {
+    if (next !== 'add') setSheetEpoch((epoch) => epoch + 1);
+    setSheet(next);
+  };
 
   const nutrients = displayedHomeNutrients(parseHomeTopNutrients(prefs.homeTopNutrients), prefs.waterTrackingEnabled);
   const waterGoalDisplay = waterDisplayAmount(prefs.waterUnit, prefs.waterDailyGoalMl);
@@ -89,7 +131,7 @@ export function HomeScreen() {
   const handleAddMenu = (action: AddMenuAction) => {
     switch (action.kind) {
       case 'startFast':
-        setSheet('fastingStart');
+        openSheet('fastingStart');
         return;
       case 'endFast':
         endFast();
@@ -101,11 +143,11 @@ export function HomeScreen() {
         diaryStore.dispatch({ type: 'water/add', entry: { id: newId(), date: logDate().toISOString(), milliliters: action.milliliters } });
         return;
       case 'waterCustom':
-        setSheet('waterCustom');
+        openSheet('waterCustom');
         return;
       case 'food':
         if (action.method === 'manual') {
-          setSheet('manualEntry');
+          openSheet('manualEntry');
         } else {
           Alert.alert('Coming next', 'AI food logging is being ported to the shared app. Use Manual Entry for now.');
         }
@@ -119,7 +161,8 @@ export function HomeScreen() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ paddingBottom: 96, gap: theme.spacing.lg }} contentInsetAdjustmentBehavior="automatic">
+      {/* iOS: `.contentMargins(.bottom, 96)` is measured from the tab bar's safe area, so add the bar. */}
+      <ScrollView contentContainerStyle={{ paddingBottom: tabBarHeight + 96, gap: theme.spacing.lg }} scrollIndicatorInsets={{ bottom: tabBarHeight }}>
         <View style={{ paddingTop: theme.spacing.sm }}>
           <WeekEnergyStrip selectedDate={selectedDate} onSelectDate={setSelectedDate} weekStartsOnMonday={prefs.weekStartsOnMonday} />
         </View>
@@ -243,16 +286,16 @@ export function HomeScreen() {
         </View>
       </ScrollView>
 
-      {/* Floating "+" (60pt accent circle, bottom trailing) */}
+      {/* Floating "+" (60pt accent circle, bottom trailing). iOS pads 24 inside the safe area, i.e. above the tab bar. */}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Add"
         testID="home.add"
-        onPress={() => setSheet('add')}
+        onPress={() => openSheet('add')}
         style={({ pressed }) => ({
           position: 'absolute',
           right: theme.spacing.xl,
-          bottom: theme.spacing.xl,
+          bottom: tabBarHeight + theme.spacing.xl,
           width: theme.sizes.addButton,
           height: theme.sizes.addButton,
           borderRadius: theme.sizes.addButton / 2,
@@ -280,6 +323,7 @@ export function HomeScreen() {
         waterUnit={prefs.waterUnit}
       />
       <WaterCustomSheet
+        key={`water-${sheetEpoch}`}
         visible={sheet === 'waterCustom'}
         unit={prefs.waterUnit}
         onDismiss={() => setSheet(null)}
@@ -289,6 +333,7 @@ export function HomeScreen() {
         }}
       />
       <FastingStartSheet
+        key={`fasting-${sheetEpoch}`}
         visible={sheet === 'fastingStart'}
         defaultGoalMinutes={prefs.fastingDefaultGoalMinutes}
         onDismiss={() => setSheet(null)}
@@ -298,6 +343,7 @@ export function HomeScreen() {
         }}
       />
       <ManualEntrySheet
+        key={`manual-${sheetEpoch}`}
         visible={sheet === 'manualEntry'}
         logDate={logDate()}
         onDismiss={() => setSheet(null)}

@@ -37,6 +37,19 @@ describe('homeDiaryMealGroups', () => {
     expect(groups[0]!.items.map((i) => i.id)).toEqual(['water-w2', 'food-pasta']);
   });
 
+  it('dates an active fast by its start today, and by now once it has crossed midnight', () => {
+    const startedYesterdayEvening = { id: 'f2', startedAt: new Date(2026, 8, 14, 20).toISOString(), goalMinutes: 960 };
+    const startedThisMorning = { id: 'f3', startedAt: iso(9), goalMinutes: 960 };
+    const now = new Date(2026, 8, 15, 13, 30);
+
+    const overnight = homeDiaryMealGroups({ foodEntries: [], waterEntries: [], fastingSessions: [startedYesterdayEvening], order: 'standard', now });
+    expect(overnight.map((g) => g.meal)).toEqual(['lunch']);
+    expect(overnight[0]!.items[0]!.date.getTime()).toBe(now.getTime());
+
+    const sameDay = homeDiaryMealGroups({ foodEntries: [], waterEntries: [], fastingSessions: [startedThisMorning], order: 'standard', now });
+    expect(sameDay.map((g) => g.meal)).toEqual(['breakfast']);
+  });
+
   it('returns no groups for an empty day', () => {
     expect(homeDiaryMealGroups({ foodEntries: [], waterEntries: [], order: 'standard' })).toEqual([]);
   });

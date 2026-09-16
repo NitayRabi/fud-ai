@@ -1,5 +1,7 @@
 /** Fasting sessions. Mirrors `FastingSession.swift` / `FastingStore.swift`. */
 
+import { isSameDay } from '../dates';
+
 export const fastingSettings = {
   enabledKey: 'fastingTrackingEnabled',
   defaultGoalMinutesKey: 'fastingDefaultGoalMinutes',
@@ -38,9 +40,15 @@ export function fastDurationSeconds(session: FastingSession, now: Date = new Dat
   return Math.max(0, (end.getTime() - new Date(session.startedAt).getTime()) / 1000);
 }
 
-/** Diary date of a fast: the day it ended. Active fasts belong to today only. */
-export function fastDiaryDate(session: FastingSession): Date {
-  return new Date(session.endedAt ?? session.startedAt);
+/**
+ * Diary date of a fast: the day it ended. An active fast belongs to today: it is dated by its
+ * start while that is still today, and by `now` once it has crossed midnight, so an overnight
+ * fast is grouped with the current meal rather than with yesterday's late-night snack.
+ */
+export function fastDiaryDate(session: FastingSession, now: Date = new Date()): Date {
+  if (session.endedAt !== undefined) return new Date(session.endedAt);
+  const started = new Date(session.startedAt);
+  return isSameDay(started, now) || started.getTime() > now.getTime() ? started : now;
 }
 
 export function fastsOverlap(a: FastingSession, b: FastingSession): boolean {

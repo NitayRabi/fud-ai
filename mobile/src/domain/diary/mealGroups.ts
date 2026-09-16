@@ -43,8 +43,10 @@ export function homeDiaryMealGroups(input: {
   fastingSessions?: readonly FastingSession[];
   order: FoodLogSortOrder;
   schedule?: MealSchedule;
+  /** Reference time for an active fast's diary date (see `fastDiaryDate`). */
+  now?: Date;
 }): HomeDiaryMealGroup[] {
-  const { foodEntries, waterEntries, fastingSessions = [], order, schedule } = input;
+  const { foodEntries, waterEntries, fastingSessions = [], order, schedule, now = new Date() } = input;
 
   const items: HomeDiaryItem[] = [
     ...foodEntries.map((entry): HomeDiaryItem => ({
@@ -59,7 +61,7 @@ export function homeDiaryMealGroups(input: {
       return { kind: 'water', id: `water-${entry.id}`, date, meal: mealTypeForDate(date, schedule), entry };
     }),
     ...fastingSessions.map((session): HomeDiaryItem => {
-      const date = fastDiaryDate(session);
+      const date = fastDiaryDate(session, now);
       return { kind: 'fasting', id: `fasting-${session.id}`, date, meal: mealTypeForDate(date, schedule), session };
     }),
   ].sort((a, b) => b.date.getTime() - a.date.getTime());
