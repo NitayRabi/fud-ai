@@ -18,17 +18,17 @@ interface Category {
 }
 
 const preferenceCategories: Category[] = [
-  { id: 'personalInfo', title: 'Personal Info', icon: 'person.crop.circle' },
-  { id: 'goalsNutrition', title: 'Goals & Nutrition', icon: 'target' },
+  { id: 'personalInfo', title: 'Personal Info', icon: 'person.crop.circle', route: 'PersonalInfo' },
+  { id: 'goalsNutrition', title: 'Goals & Nutrition', icon: 'target', route: 'GoalsNutrition' },
   { id: 'trackingReminders', title: 'Tracking & Reminders', icon: 'timer', route: 'TrackingReminders' },
-  { id: 'notifications', title: 'Notifications', icon: 'bell' },
+  { id: 'notifications', title: 'Notifications', icon: 'bell', route: 'Notifications' },
   { id: 'aiAccess', title: 'AI Access', icon: 'key.horizontal', route: 'AIAccess' },
   { id: 'aiProviders', title: 'AI Providers & Fallbacks', icon: 'sparkles' },
   { id: 'speechToText', title: 'Speech-to-Text', icon: 'waveform' },
   { id: 'appPreferences', title: 'App Settings', icon: 'slider.horizontal.3', route: 'AppSettings' },
   { id: 'workout', title: 'Workout', icon: 'dumbbell' },
-  { id: 'healthData', title: 'Health & Data', icon: 'heart' },
-  { id: 'dataManagement', title: 'Data Management', icon: 'externaldrive' },
+  { id: 'healthData', title: 'Health & Data', icon: 'heart', route: 'HealthData' },
+  { id: 'dataManagement', title: 'Data Management', icon: 'externaldrive', route: 'HealthData' },
 ];
 
 const appInfoCategories: Category[] = [

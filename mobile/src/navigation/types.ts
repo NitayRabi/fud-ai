@@ -8,7 +8,11 @@ export type RootTabParamList = {
 
 export type SettingsStackParamList = {
   SettingsHome: undefined;
+  PersonalInfo: undefined;
+  GoalsNutrition: undefined;
   AIAccess: undefined;
   TrackingReminders: undefined;
+  Notifications: undefined;
   AppSettings: undefined;
+  HealthData: undefined;
 };

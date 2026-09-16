@@ -4,6 +4,7 @@
  * the Plan Ready editing rules (carbs are the residual so calories stay consistent).
  */
 
+import { POUNDS_PER_KILOGRAM } from '../body/bodyState';
 import { activityMultiplier, carbsGoal, dailyCalories, fatGoal, kcalPerGram, proteinGoal, type ActivityLevel, type Gender, type UserProfile, type WeightGoal } from '../profile/userProfile';
 
 export const onboardingSteps = [
@@ -52,7 +53,6 @@ export function previousOnboardingStep(step: OnboardingStep): OnboardingStep {
 
 export type GoalSpeed = 0 | 1 | 2;
 
-export const POUNDS_PER_KILOGRAM = 2.20462;
 export const CM_PER_FOOT = 30.48;
 export const CM_PER_INCH = 2.54;
 

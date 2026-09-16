@@ -12,6 +12,10 @@ import { ProgressScreen } from '../screens/progress/ProgressScreen';
 import { WorkoutsScreen } from '../screens/workouts/WorkoutsScreen';
 import { AIAccessScreen } from '../screens/settings/AIAccessScreen';
 import { AppSettingsScreen } from '../screens/settings/AppSettingsScreen';
+import { GoalsNutritionScreen } from '../screens/settings/GoalsNutritionScreen';
+import { HealthDataScreen } from '../screens/settings/HealthDataScreen';
+import { NotificationsScreen } from '../screens/settings/NotificationsScreen';
+import { PersonalInfoScreen } from '../screens/settings/PersonalInfoScreen';
 import { SettingsScreen } from '../screens/settings/SettingsScreen';
 import { TrackingRemindersScreen } from '../screens/settings/TrackingRemindersScreen';
 import { useTheme } from '../theme';
@@ -42,9 +46,13 @@ function SettingsStackScreen() {
       }}
     >
       <SettingsStack.Screen name="SettingsHome" component={SettingsScreen} options={{ title: 'Settings', headerLargeTitle: true }} />
+      <SettingsStack.Screen name="PersonalInfo" component={PersonalInfoScreen} options={{ title: 'Personal Info' }} />
+      <SettingsStack.Screen name="GoalsNutrition" component={GoalsNutritionScreen} options={{ title: 'Goals & Nutrition' }} />
       <SettingsStack.Screen name="AIAccess" component={AIAccessScreen} options={{ title: 'AI Access' }} />
       <SettingsStack.Screen name="TrackingReminders" component={TrackingRemindersScreen} options={{ title: 'Tracking & Reminders' }} />
+      <SettingsStack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Notifications' }} />
       <SettingsStack.Screen name="AppSettings" component={AppSettingsScreen} options={{ title: 'App Settings' }} />
+      <SettingsStack.Screen name="HealthData" component={HealthDataScreen} options={{ title: 'Health & Data' }} />
     </SettingsStack.Navigator>
   );
 }
