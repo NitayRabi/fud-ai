@@ -73,8 +73,10 @@ export function weeklyChallengeScore(input: WeeklyChallengeInput): WeeklyChallen
   const activityByDay = new Map<string, number>();
   for (const sample of input.activities) {
     const day = includedDay(sample.date);
-    if (!day || sample.calories === undefined || sample.calories <= 0) continue;
-    activityByDay.set(day, (activityByDay.get(day) ?? 0) + sample.calories);
+    // Presence earns the activity day even when caloriesBurned is missing/zero
+    // (Progress copy: recording a workout earns the point).
+    if (!day) continue;
+    activityByDay.set(day, (activityByDay.get(day) ?? 0) + Math.max(0, sample.calories ?? 0));
   }
 
   let nutritionDays = 0;
