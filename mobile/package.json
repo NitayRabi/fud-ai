@@ -9,7 +9,8 @@
     "android": "expo run:android",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "catalog": "node scripts/build-exercise-catalog.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
