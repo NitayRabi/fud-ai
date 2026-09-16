@@ -90,6 +90,13 @@ export interface Preferences {
   fastingTrackingEnabled: boolean;
   fastingDefaultGoalMinutes: number;
 
+  /** Meal reminders granted during onboarding / Settings → Notifications. */
+  notificationsEnabled: boolean;
+  /** Apple Health / Health Connect sync — native-only for now, kept so Settings mirrors iOS. */
+  healthKitEnabled: boolean;
+  /** Set when the user hand-tuned the Plan Ready numbers, so Adaptive Goals stays off. */
+  onboardingPlanEdited: boolean;
+
   aiAccessMode: AIMode;
   /** Consent captured on the AI step. */
   aiConsentGiven: boolean;
@@ -125,6 +132,10 @@ export const defaultPreferences: Preferences = {
   fastingTrackingEnabled: false,
   fastingDefaultGoalMinutes: fastingSettings.defaultGoalMinutes,
 
+  notificationsEnabled: false,
+  healthKitEnabled: false,
+  onboardingPlanEdited: false,
+
   aiAccessMode: 'byok',
   aiConsentGiven: false,
   acceptedTermsAndPrivacy: false,
@@ -152,6 +163,9 @@ export const preferenceKeys: { readonly [K in keyof Preferences]: K } = {
   waterUnit: waterSettings.unitKey,
   fastingTrackingEnabled: fastingSettings.enabledKey,
   fastingDefaultGoalMinutes: fastingSettings.defaultGoalMinutesKey,
+  notificationsEnabled: 'notificationsEnabled',
+  healthKitEnabled: 'healthKitEnabled',
+  onboardingPlanEdited: 'onboardingPlanEdited',
   aiAccessMode: AI_MODE_STORAGE_KEY,
   aiConsentGiven: 'aiConsentGiven',
   acceptedTermsAndPrivacy: 'acceptedTermsAndPrivacy',

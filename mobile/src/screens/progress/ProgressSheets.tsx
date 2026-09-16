@@ -5,12 +5,12 @@
  */
 
 import { useState } from 'react';
-import { Alert, Pressable, TextInput, View } from 'react-native';
+import { Alert, Pressable, View } from 'react-native';
 
 import { BottomSheet } from '../../components/BottomSheet';
-import { Icon } from '../../components/Icon';
 import { AppText, Card, Divider, PrimaryButton, Row } from '../../components/primitives';
 import { SegmentedControl } from '../../components/SegmentedControl';
+import { StepperField } from '../../components/StepperField';
 import {
   bodyFatLimits,
   displayWeight,
@@ -25,61 +25,6 @@ import {
 } from '../../domain/body/bodyState';
 import type { WeightUnit } from '../../domain/prefs/preferences';
 import { useTheme } from '../../theme';
-
-// MARK: - Stepper field
-
-interface StepperFieldProps {
-  value: string;
-  onChange: (value: string) => void;
-  step: number;
-  unit: string;
-  accessibilityLabel: string;
-}
-
-function StepperField({ value, onChange, step, unit, accessibilityLabel }: StepperFieldProps) {
-  const theme = useTheme();
-  const parsed = Number.parseFloat(value.replace(',', '.'));
-  const nudge = (direction: 1 | -1) => {
-    const base = Number.isFinite(parsed) ? parsed : 0;
-    onChange((Math.round((base + direction * step) * 10) / 10).toFixed(1));
-  };
-  const button = (label: '−' | '+', direction: 1 | -1) => (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label === '+' ? 'Increase' : 'Decrease'}
-      onPress={() => nudge(direction)}
-      style={({ pressed }) => ({
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: theme.accentAlpha(pressed ? 0.2 : 0.12),
-      })}
-    >
-      <Icon name={label === '+' ? 'plus' : 'minus'} size={20} color={theme.colors.accent} />
-    </Pressable>
-  );
-  return (
-    <Row style={{ gap: 12, justifyContent: 'center' }}>
-      {button('−', -1)}
-      <Row style={{ alignItems: 'flex-end', gap: 4, minWidth: 120, justifyContent: 'center' }}>
-        <TextInput
-          value={value}
-          onChangeText={(v) => onChange(v.replace(/[^0-9.,]/g, ''))}
-          keyboardType="decimal-pad"
-          accessibilityLabel={accessibilityLabel}
-          selectTextOnFocus
-          style={[theme.text.largeTitle, { color: theme.colors.label, minWidth: 80, textAlign: 'center', paddingVertical: 0 }]}
-        />
-        <AppText variant="title3" tone="secondary" style={{ paddingBottom: 6 }}>
-          {unit}
-        </AppText>
-      </Row>
-      {button('+', 1)}
-    </Row>
-  );
-}
 
 // MARK: - Log weight
 
