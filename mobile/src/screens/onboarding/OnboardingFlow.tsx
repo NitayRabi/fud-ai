@@ -409,7 +409,11 @@ function BodyFatStep({ draft, onChange, onNext }: { draft: OnboardingDraft; onCh
               </AppText>
               <Switch
                 value={draft.goalBodyFatPercent !== undefined}
-                onValueChange={(on) => onChange({ goalBodyFatPercent: on ? draft.bodyFatPercent : undefined })}
+                onValueChange={(on) => {
+                  // The goal seeds from the current value at the moment the switch turns on, so the field shows what is saved.
+                  if (on) setGoal(String(draft.bodyFatPercent));
+                  onChange({ goalBodyFatPercent: on ? draft.bodyFatPercent : undefined });
+                }}
                 trackColor={{ true: theme.colors.accent, false: theme.colors.fill }}
                 thumbColor="#FFFFFF"
               />
