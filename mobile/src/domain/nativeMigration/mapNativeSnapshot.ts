@@ -37,6 +37,7 @@ export const nativePrefAliases: Record<string, keyof Preferences> = {
   maxResponseTokens: 'aiMaxResponseTokens',
   healthConnectEnabled: 'healthKitEnabled',
   aiAnalysisConsentGiven: 'aiConsentGiven',
+  'addMenu.config': 'addMenuConfig',
 };
 
 export interface PersistedDiary {
@@ -464,6 +465,9 @@ function mapPreferences(prefs: NativeStorageSnapshot['prefs'], blobs: Record<str
   if (blobs.adaptiveGoalsPreviousTargets && merged.adaptiveGoalsPreviousTargets === undefined) {
     merged.adaptiveGoalsPreviousTargets = blobs.adaptiveGoalsPreviousTargets;
   }
+  if (blobs['addMenu.config'] && merged['addMenu.config'] === undefined && merged.addMenuConfig === undefined) {
+    merged.addMenuConfig = blobs['addMenu.config'];
+  }
   for (const [rawKey, value] of Object.entries(merged)) {
     const key = (nativePrefAliases[rawKey] ?? rawKey) as keyof Preferences;
     assignPreference(patch, key, value);
@@ -488,6 +492,8 @@ function assignPreference(patch: Partial<Preferences>, key: keyof Preferences, v
     case 'acceptedTermsAndPrivacy':
     case 'separateTextProviderEnabled':
     case 'aiFallbackEnabled':
+    case 'textAIFallbackEnabled':
+    case 'walkRunQuickLogEnabled':
       if (typeof value === 'boolean') patch[key] = value;
       break;
     case 'appearanceMode':
@@ -534,6 +540,9 @@ function assignPreference(patch: Partial<Preferences>, key: keyof Preferences, v
     case 'aiUserContext':
     case 'selectedFallbackAIProvider':
     case 'selectedFallbackAIModel':
+    case 'selectedTextFallbackAIProvider':
+    case 'selectedTextFallbackAIModel':
+    case 'addMenuConfig':
       if (typeof value === 'string') (patch as Record<string, string>)[key] = value;
       break;
     default:
@@ -618,6 +627,7 @@ function mapWorkoutSession(value: unknown, platform: NativePlatform): WorkoutSes
               }];
             })
           : [];
+        const durationSeconds = savedTimerSeconds(exercise);
         return [{
           id: exerciseId,
           itemID,
@@ -625,6 +635,7 @@ function mapWorkoutSession(value: unknown, platform: NativePlatform): WorkoutSes
           targetMuscles: asStringArray(exercise.targetMuscles).length > 0 ? asStringArray(exercise.targetMuscles) : asStringArray(exercise.primaryMuscles),
           equipment: typeof exercise.equipment === 'string' ? exercise.equipment : typeof exercise.rawEquipment === 'string' ? exercise.rawEquipment : '',
           sets,
+          ...(durationSeconds ? { durationSeconds } : {}),
         }];
       })
     : [];
@@ -666,6 +677,7 @@ function mapWorkoutDrafts(value: unknown, platform: NativePlatform): Record<stri
                 }];
               })
             : [];
+          const durationSeconds = savedTimerSeconds(exercise);
           return [{
             id,
             itemID,
@@ -674,6 +686,7 @@ function mapWorkoutDrafts(value: unknown, platform: NativePlatform): Record<stri
             equipment: typeof exercise.equipment === 'string' ? exercise.equipment : typeof exercise.rawEquipment === 'string' ? exercise.rawEquipment : '',
             category: typeof exercise.category === 'string' ? exercise.category : '',
             sets,
+            ...(durationSeconds ? { durationSeconds } : {}),
           }];
         })
       : [];
@@ -748,6 +761,15 @@ function asId(value: unknown): string | undefined {
   if (typeof value === 'string' && value.trim()) return value;
   if (isRecord(value) && typeof value.uuid === 'string') return value.uuid;
   return undefined;
+}
+
+function savedTimerSeconds(exercise: Record<string, unknown>): number | undefined {
+  const direct = asFiniteNumber(exercise.durationSeconds);
+  if (direct && direct > 0) return Math.round(direct);
+  const timer = isRecord(exercise.timer) ? exercise.timer : undefined;
+  if (!timer || timer.isRunning === true || timer.isSaved === false) return undefined;
+  const saved = asFiniteNumber(timer.savedDurationSeconds);
+  return saved && saved > 0 ? Math.round(saved) : undefined;
 }
 
 function asFiniteNumber(value: unknown): number | undefined {
