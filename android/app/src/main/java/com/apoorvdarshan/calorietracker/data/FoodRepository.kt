@@ -75,7 +75,9 @@ class FoodRepository(
         // Decode + append + encode in one transaction: a diary that fails to
         // decode is preserved, never replaced by `[entry]`.
         prefs.updateFoodEntries { current -> current + entry }
-        healthRetry.sync(entry, isUpdate = false)
+        // Don't hold the Log button on Health Connect: a stalled binder call kept the
+        // Review Food sheet in its submitting state with Cancel disabled.
+        healthRetry.syncInBackground(entry, isUpdate = false)
         // One-time organic review moment: the first successful food log (iOS parity).
         if (!prefs.reviewPromptedAfterFirstLog.first()) {
             prefs.setReviewPromptedAfterFirstLog(true)

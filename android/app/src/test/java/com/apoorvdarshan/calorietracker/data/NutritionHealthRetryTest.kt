@@ -3,6 +3,7 @@ package com.apoorvdarshan.calorietracker.data
 import com.apoorvdarshan.calorietracker.models.FoodEntry
 import com.apoorvdarshan.calorietracker.models.FoodSource
 import com.apoorvdarshan.calorietracker.services.health.NutritionWriteGate
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
@@ -45,6 +46,30 @@ class NutritionHealthRetryTest {
 
         retry.sync(entry, isUpdate = false)
 
+        assertTrue(store.pending.value.isEmpty())
+    }
+
+    @Test
+    fun backgroundSyncDoesNotWaitForAStalledHealthConnectWrite() = runBlocking {
+        val entry = foodEntry("Paneer Tikka")
+        val store = FakeNutritionSyncStore(entries = listOf(entry))
+        val writeStarted = CompletableDeferred<Unit>()
+        val releaseWrite = CompletableDeferred<Unit>()
+        val health = FakeNutritionHealthSync(onWrite = {
+            writeStarted.complete(Unit)
+            releaseWrite.await()
+        })
+        val retry = NutritionHealthRetry(store, health, scope = this)
+
+        // The regression: Log awaited this write, so a stalled binder froze the Review Food sheet.
+        val job = retry.syncInBackground(entry, isUpdate = false)
+        writeStarted.await()
+        assertTrue(job.isActive)
+        assertEquals(setOf(entry.id.toString()), store.pending.value)
+
+        releaseWrite.complete(Unit)
+        job.join()
+        assertEquals(listOf(entry.id), health.writes)
         assertTrue(store.pending.value.isEmpty())
     }
 

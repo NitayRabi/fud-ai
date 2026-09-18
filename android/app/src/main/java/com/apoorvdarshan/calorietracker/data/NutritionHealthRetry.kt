@@ -1,9 +1,16 @@
 package com.apoorvdarshan.calorietracker.data
 
 import com.apoorvdarshan.calorietracker.models.FoodEntry
+import android.util.Log
 import com.apoorvdarshan.calorietracker.services.health.NutritionWriteGate
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
@@ -48,7 +55,13 @@ interface NutritionSyncStore {
  */
 class NutritionHealthRetry(
     private val store: NutritionSyncStore,
-    private val health: NutritionHealthSync?
+    private val health: NutritionHealthSync?,
+    /** Outlives the screen that logged the food; Health Connect IPC has no upper bound. */
+    private val scope: CoroutineScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, error ->
+            Log.w("FudAIHealth", "Background nutrition sync failed: ${error.javaClass.simpleName}")
+        }
+    )
 ) {
     private val mutex = Mutex()
 
@@ -61,6 +74,15 @@ class NutritionHealthRetry(
      * the entry.
      */
     suspend fun sync(entry: FoodEntry, isUpdate: Boolean) = syncAll(listOf(entry), isUpdate)
+
+    /**
+     * [sync] without making the caller wait. The permission probe and insert are binder
+     * calls that can stall indefinitely, and the mutex queues behind a stalled foreground
+     * retry, so a UI save path that awaited them could never finish. The entry is already
+     * in the local diary; the pending queue covers a write this job never completes.
+     */
+    fun syncInBackground(entry: FoodEntry, isUpdate: Boolean): Job =
+        scope.launch { sync(entry, isUpdate) }
 
     /**
      * Push several entries in one pass. A diary import can carry hundreds of changed
