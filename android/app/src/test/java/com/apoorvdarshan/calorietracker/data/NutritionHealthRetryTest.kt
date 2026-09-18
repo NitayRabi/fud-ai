@@ -6,6 +6,7 @@ import com.apoorvdarshan.calorietracker.services.health.NutritionWriteGate
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -62,14 +63,43 @@ class NutritionHealthRetryTest {
         val retry = NutritionHealthRetry(store, health, scope = this)
 
         // The regression: Log awaited this write, so a stalled binder froze the Review Food sheet.
-        val job = retry.syncInBackground(entry, isUpdate = false)
+        val job = retry.syncInBackground(entry, isUpdate = false)!!
+        // Queued before the job has even started, so a process death cannot lose the write.
+        assertEquals(setOf(entry.id.toString()), store.pending.value)
         writeStarted.await()
         assertTrue(job.isActive)
-        assertEquals(setOf(entry.id.toString()), store.pending.value)
 
         releaseWrite.complete(Unit)
         job.join()
         assertEquals(listOf(entry.id), health.writes)
+        assertTrue(store.pending.value.isEmpty())
+    }
+
+    @Test
+    fun backgroundSyncDropsItsQueuedIdWhenPermissionIsDenied() = runBlocking {
+        val entry = foodEntry("Dal")
+        val store = FakeNutritionSyncStore(entries = listOf(entry))
+        val health = FakeNutritionHealthSync(gate = NutritionWriteGate.DENIED)
+        val retry = NutritionHealthRetry(store, health, scope = this)
+
+        retry.syncInBackground(entry, isUpdate = false)!!.join()
+
+        assertTrue(health.writes.isEmpty())
+        assertTrue(store.pending.value.isEmpty())
+    }
+
+    @Test
+    fun backgroundSyncDoesNotRequeueAnEntryForgottenBeforeItRan() = runBlocking {
+        val entry = foodEntry("Rajma")
+        val store = FakeNutritionSyncStore(entries = listOf(entry))
+        val health = FakeNutritionHealthSync()
+        val retry = NutritionHealthRetry(store, health, scope = this)
+
+        val job = retry.syncInBackground(entry, isUpdate = false)!!
+        retry.forget(entry.id)
+        job.join()
+
+        assertTrue(health.writes.isEmpty())
         assertTrue(store.pending.value.isEmpty())
     }
 
@@ -263,7 +293,9 @@ private class FakeNutritionSyncStore(
     override val foodEntries: Flow<List<FoodEntry>> = this.entries
     override val healthConnectEnabled: Flow<Boolean> = MutableStateFlow(enabled)
     override val pendingNutritionHealthWrites: Flow<Set<String>> = this.pending
-    override suspend fun setPendingNutritionHealthWrites(ids: Set<String>) { pending.value = ids }
+    override suspend fun updatePendingNutritionHealthWrites(transform: (Set<String>) -> Set<String>) {
+        pending.update(transform)
+    }
 }
 
 private class FakeNutritionHealthSync(
